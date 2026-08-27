@@ -10,7 +10,7 @@
     <RootNamespace>BalanceIsland.Windows</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon />
-    <Version>0.1.3</Version>
+    <Version>0.1.4</Version>
     <Authors>Noyorin0011</Authors>
     <Description>Windows taskbar island for AI API balances and usage.</Description>
   </PropertyGroup>

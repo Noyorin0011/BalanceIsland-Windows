@@ -10,6 +10,7 @@ namespace BalanceIsland.Windows;
 public partial class MainWindow : Window
 {
     private readonly BalanceCoordinator _coordinator;
+    private readonly bool _isWindows11;
     private bool _updatingIslandMode;
     public event EventHandler<bool>? IslandVisibilityRequested;
     public event EventHandler<IslandDisplayMode>? IslandDisplayModeRequested;
@@ -18,16 +19,24 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _coordinator = coordinator;
+        _isWindows11 = OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
         ProviderBox.ItemsSource = Enum.GetValues<Provider>()
             .Select(value => new ProviderChoice(value, value.DisplayName()))
             .ToArray();
         ProviderBox.SelectedIndex = 0;
-        IslandModeBox.ItemsSource = new[]
+        IslandModeBox.ItemsSource = _isWindows11
+            ? new[] { new IslandModeChoice(IslandDisplayMode.Floating, "透明悬浮窗") }
+            : new[]
+            {
+                new IslandModeChoice(IslandDisplayMode.Floating, "透明悬浮窗"),
+                new IslandModeChoice(IslandDisplayMode.TaskbarEmbedded, "任务栏组件（兼容）")
+            };
+        if (_isWindows11)
         {
-            new IslandModeChoice(IslandDisplayMode.Floating, "悬浮窗"),
-            new IslandModeChoice(IslandDisplayMode.TaskbarEmbedded, "任务栏组件（兼容）"),
-            new IslandModeChoice(IslandDisplayMode.WidgetsButtonOverlay, "Widgets 按钮覆盖")
-        };
+            IslandModeLabel.Text = "浮岛显示";
+            IslandModeBox.Visibility = Visibility.Collapsed;
+            IslandModeSelectorColumn.Width = new GridLength(12);
+        }
         IslandModeBox.SelectionChanged += IslandModeBox_SelectionChanged;
         _coordinator.StateChanged += (_, _) => Dispatcher.Invoke(RefreshRows);
         RefreshRows();
@@ -108,6 +117,8 @@ public partial class MainWindow : Window
 
     public void UpdateIslandControls(bool visible, IslandDisplayMode mode, string? status = null)
     {
+        if (_isWindows11 || mode == IslandDisplayMode.WidgetsButtonOverlay)
+            mode = IslandDisplayMode.Floating;
         UpdateIslandButton(visible);
         _updatingIslandMode = true;
         IslandModeBox.SelectedValue = mode;
@@ -115,8 +126,7 @@ public partial class MainWindow : Window
         IslandModeStatus.Text = status ?? mode switch
         {
             IslandDisplayMode.TaskbarEmbedded => "挂载到 Explorer 任务栏；不可用时自动回退悬浮",
-            IslandDisplayMode.WidgetsButtonOverlay => "覆盖 Windows 11 左侧 Widgets 按钮；不可用时回退兼容模式",
-            _ => "悬浮在任务栏上方"
+            _ => _isWindows11 ? "Windows 11 · 透明悬浮模式" : "透明悬浮在任务栏区域"
         };
     }
 

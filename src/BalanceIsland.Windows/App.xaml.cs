@@ -24,6 +24,9 @@ public partial class App : System.Windows.Application
         var credentials = new WindowsCredentialStore();
         var client = new ProviderClient();
         _coordinator = new BalanceCoordinator(store, credentials, client);
+        var supportedMode = ResolveDisplayMode(_coordinator.State.IslandDisplayMode);
+        if (supportedMode != _coordinator.State.IslandDisplayMode)
+            _coordinator.SetIslandDisplayMode(supportedMode);
 
         _mainWindow = new MainWindow(_coordinator);
         _themeManager.Track(_mainWindow);
@@ -108,11 +111,18 @@ public partial class App : System.Windows.Application
     private void SetIslandDisplayMode(IslandDisplayMode mode)
     {
         if (_coordinator is null) return;
+        mode = ResolveDisplayMode(mode);
         _coordinator.SetIslandDisplayMode(mode);
         _mainWindow?.UpdateIslandControls(_coordinator.State.IslandEnabled, mode);
         CreateIslandWindow();
         _island?.SetDisplayMode(mode);
     }
+
+    private static IslandDisplayMode ResolveDisplayMode(IslandDisplayMode mode) =>
+        OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000) ||
+        mode == IslandDisplayMode.WidgetsButtonOverlay
+            ? IslandDisplayMode.Floating
+            : mode;
 
     private void CreateIslandWindow()
     {

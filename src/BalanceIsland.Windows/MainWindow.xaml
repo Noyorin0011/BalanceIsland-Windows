@@ -14,7 +14,7 @@
 
         <StackPanel Grid.Row="0" Margin="0,0,0,18">
             <TextBlock Text="Balance Island" FontSize="28" FontWeight="SemiBold" />
-            <TextBlock Text="Windows 任务栏 AI API 余额监控 · v0.1.3"
+            <TextBlock Text="Windows 任务栏 AI API 余额监控 · v0.1.4"
                        Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0" />
         </StackPanel>
 
@@ -59,10 +59,11 @@
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="190" />
+                    <ColumnDefinition x:Name="IslandModeSelectorColumn" Width="190" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="浮岛显示模式" VerticalAlignment="Center" />
+                <TextBlock x:Name="IslandModeLabel" Grid.Column="0" Text="浮岛显示模式"
+                           VerticalAlignment="Center" />
                 <ComboBox x:Name="IslandModeBox" Grid.Column="1" Margin="12,0,12,0"
                           DisplayMemberPath="Display" SelectedValuePath="Value" />
                 <TextBlock x:Name="IslandModeStatus" Grid.Column="2" VerticalAlignment="Center"
