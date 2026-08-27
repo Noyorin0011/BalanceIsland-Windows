@@ -193,4 +193,6 @@ public sealed class ProviderApiException(
     int? statusCode = null,
     TimeSpan? retryAfter = null) : Exception(message)
 {
-    public int? StatusCode { get; }
+    public int? StatusCode { get; } = statusCode;
+    public TimeSpan? RetryAfter { get; } = retryAfter;
+}
