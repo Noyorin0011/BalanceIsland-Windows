@@ -210,7 +210,9 @@ public partial class TaskbarIslandWindow : Window
         IslandText.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
         WidgetsTextPanel.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
         IslandBorder.BorderThickness = enabled ? new Thickness(0) : new Thickness(1);
-        IslandBorder.Padding = enabled ? new Thickness(10, 3) : new Thickness(7, 1);
+        IslandBorder.Padding = enabled
+            ? new Thickness(10, 3, 10, 3)
+            : new Thickness(7, 1, 7, 1);
         IslandBorder.CornerRadius = new CornerRadius(enabled ? 6 : 5);
         if (!enabled)
         {
