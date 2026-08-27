@@ -9,6 +9,7 @@ Windows 任务栏 AI API 余额与用量监控工具。当前仓库是以 Androi
 - Windows 10 1809+ / Windows 11，C#、.NET 8、WPF 与 Win32。
 - 托盘常驻；关闭主窗口后继续运行，托盘菜单可打开、刷新、切换浮岛或退出。
 - 任务栏内无焦点文字条：每 5 秒轮换账户，单击立即切换，右键打开设置。
+- 设置窗口、原生标题栏和任务栏浮岛跟随 Windows 应用深浅色模式，运行中切换主题会立即更新。
 - 同一 Provider 多账户；备注留空时显示 API Key 后四位。
 - API Key 清洗与 Windows Credential Manager 存储；本地 JSON 不保存完整 Key。
 - 每账户 `1–1440` 分钟刷新，`0` 使用 v0.9.2 的 Provider 建议周期。

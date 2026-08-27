@@ -10,10 +10,13 @@ public partial class App : System.Windows.Application
     private MainWindow? _mainWindow;
     private TaskbarIslandWindow? _island;
     private BalanceCoordinator? _coordinator;
+    private SystemThemeManager? _themeManager;
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        _themeManager = new SystemThemeManager(Resources, Dispatcher);
 
         var store = new AppDataStore();
         var credentials = new WindowsCredentialStore();
@@ -22,6 +25,8 @@ public partial class App : System.Windows.Application
 
         _mainWindow = new MainWindow(_coordinator);
         _island = new TaskbarIslandWindow(_coordinator);
+        _themeManager.Track(_mainWindow);
+        _themeManager.Track(_island);
         _mainWindow.IslandVisibilityRequested += (_, visible) => SetIslandVisible(visible);
         _mainWindow.Closing += (_, args) =>
         {
@@ -97,6 +102,7 @@ public partial class App : System.Windows.Application
         _island?.Close();
         _mainWindow?.Close();
         _coordinator?.Dispose();
+        _themeManager?.Dispose();
         Shutdown();
     }
 }
