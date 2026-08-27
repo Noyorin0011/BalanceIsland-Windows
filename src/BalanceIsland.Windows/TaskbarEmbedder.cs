@@ -29,6 +29,8 @@ public sealed class TaskbarEmbedder
     private const int DwmwaCloaked = 14;
     private const int Gap = 6;
     private const int MinimumWidthDip = 120;
+    private static readonly IntPtr HwndTopMost = new(-1);
+    private static readonly IntPtr HwndNoTopMost = new(-2);
     private const string TaskbarAlignmentKey =
         @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced";
 
@@ -40,9 +42,13 @@ public sealed class TaskbarEmbedder
     private IntPtr _geometryTaskbar;
     private DateTime _lastGeometryRead;
     private TaskbarGeometry _cachedGeometry = TaskbarGeometry.Empty;
+    private IntPtr _rejectedTaskbar;
+    private bool _embeddingRejected;
+    private bool _compatibilityOverlay;
 
     public bool IsAttached => _window != IntPtr.Zero && IsWindow(_window) &&
-                              _taskbar != IntPtr.Zero && GetParent(_window) == _taskbar;
+                              _taskbar != IntPtr.Zero && IsWindow(_taskbar) &&
+                              (_compatibilityOverlay || GetParent(_window) == _taskbar);
 
     public TaskbarAttachResult AttachOrUpdate(IntPtr window, double desiredWidthDip, double desiredHeightDip)
     {
@@ -52,6 +58,12 @@ public sealed class TaskbarEmbedder
         var taskbar = FindWindow("Shell_TrayWnd", null);
         if (taskbar == IntPtr.Zero || !GetWindowRect(taskbar, out var taskbarRect))
             return TaskbarAttachResult.Failed("Explorer 任务栏尚未就绪");
+
+        if (_rejectedTaskbar != taskbar)
+        {
+            _rejectedTaskbar = taskbar;
+            _embeddingRejected = false;
+        }
 
         var taskbarWidth = taskbarRect.Right - taskbarRect.Left;
         var taskbarHeight = taskbarRect.Bottom - taskbarRect.Top;
@@ -99,9 +111,16 @@ public sealed class TaskbarEmbedder
         var xScreen = centered ? left : right - width;
         var x = xScreen - taskbarRect.Left;
         var y = Math.Max(0, (taskbarHeight - height) / 2);
+        var yScreen = taskbarRect.Top + y;
 
         CaptureStyles(window);
         var popupParented = OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
+        if (_embeddingRejected)
+        {
+            return PlaceCompatibilityOverlay(
+                window, taskbar, xScreen, yScreen, width, height, centered, dpi);
+        }
+
         var style = GetWindowLongPtr(window, GwlStyle).ToInt64();
         var hostedStyle = popupParented
             ? (style & ~WsChild) | WsPopup
@@ -117,8 +136,10 @@ public sealed class TaskbarEmbedder
             SetParent(window, taskbar);
             if (GetParent(window) != taskbar)
             {
+                _embeddingRejected = true;
                 RestoreWindow(window);
-                return TaskbarAttachResult.Failed($"Explorer 拒绝嵌入（Win32 {Marshal.GetLastWin32Error()}）");
+                return PlaceCompatibilityOverlay(
+                    window, taskbar, xScreen, yScreen, width, height, centered, dpi);
             }
         }
 
@@ -146,10 +167,64 @@ public sealed class TaskbarEmbedder
 
         _window = window;
         _taskbar = taskbar;
+        _compatibilityOverlay = false;
         var placement = centered ? "任务栏左侧" : "通知区域左侧";
         var host = popupParented ? "layered popup host" : "child host";
         var label = $"已嵌入{placement}（{host}）";
         return TaskbarAttachResult.Succeeded(label, width * 96d / dpi);
+    }
+
+    private TaskbarAttachResult PlaceCompatibilityOverlay(
+        IntPtr window,
+        IntPtr taskbar,
+        int x,
+        int y,
+        int width,
+        int height,
+        bool centered,
+        uint dpi)
+    {
+        // TrafficMonitor-style fallback: keep a no-activate top-level window visually inside
+        // the taskbar. Explorer builds that reject cross-process parenting still get a visible,
+        // independently rendered surface and can rebuild the taskbar without taking us down.
+        if (GetParent(window) != IntPtr.Zero) SetParent(window, IntPtr.Zero);
+
+        var style = GetWindowLongPtr(window, GwlStyle).ToInt64();
+        SetWindowLongPtr(window, GwlStyle, new IntPtr((style & ~WsChild) | WsPopup));
+        var exStyle = GetWindowLongPtr(window, GwlExStyle).ToInt64();
+        SetWindowLongPtr(window, GwlExStyle,
+            new IntPtr(exStyle | WsExLayered | WsExToolWindow | WsExNoActivate));
+
+        if (!SetWindowPos(window, HwndTopMost, x, y, width, height,
+                SwpNoActivate | SwpFrameChanged | SwpShowWindow))
+        {
+            RestoreWindow(window);
+            return TaskbarAttachResult.Failed(
+                $"任务栏兼容定位失败（Win32 {Marshal.GetLastWin32Error()}），已回退悬浮模式");
+        }
+
+        ShowWindow(window, SwShowNoActivate);
+        RedrawWindow(window, IntPtr.Zero, IntPtr.Zero,
+            RdwInvalidate | RdwFrame | RdwAllChildren | RdwUpdateNow);
+        DwmFlush();
+        if (!IsWindowVisible(window))
+        {
+            RestoreWindow(window);
+            return TaskbarAttachResult.Failed("任务栏兼容窗口未进入可见状态，已回退悬浮模式");
+        }
+        if (DwmGetWindowAttribute(window, DwmwaCloaked, out var cloaked, sizeof(int)) == 0 && cloaked != 0)
+        {
+            RestoreWindow(window);
+            return TaskbarAttachResult.Failed(
+                $"任务栏兼容窗口被 DWM 隐藏（cloak {cloaked}），已回退悬浮模式");
+        }
+
+        _window = window;
+        _taskbar = taskbar;
+        _compatibilityOverlay = true;
+        var placement = centered ? "任务栏左侧" : "通知区域左侧";
+        return TaskbarAttachResult.Succeeded(
+            $"已显示于{placement}（TrafficMonitor 兼容模式）", width * 96d / dpi);
     }
 
     public void Detach()
@@ -157,6 +232,7 @@ public sealed class TaskbarEmbedder
         if (_window != IntPtr.Zero && IsWindow(_window)) RestoreWindow(_window);
         _window = IntPtr.Zero;
         _taskbar = IntPtr.Zero;
+        _compatibilityOverlay = false;
     }
 
     private void CaptureStyles(IntPtr window)
@@ -176,7 +252,7 @@ public sealed class TaskbarEmbedder
             SetWindowLongPtr(window, GwlStyle, new IntPtr(_originalStyle));
             SetWindowLongPtr(window, GwlExStyle, new IntPtr(_originalExStyle));
         }
-        SetWindowPos(window, IntPtr.Zero, 0, 0, 0, 0,
+        SetWindowPos(window, HwndNoTopMost, 0, 0, 0, 0,
             0x0001 | 0x0002 | SwpNoActivate | SwpFrameChanged);
     }
 

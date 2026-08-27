@@ -25,7 +25,7 @@ public partial class MainWindow : Window
         IslandModeBox.ItemsSource = new[]
         {
             new IslandModeChoice(IslandDisplayMode.Floating, "悬浮窗"),
-            new IslandModeChoice(IslandDisplayMode.TaskbarEmbedded, "任务栏嵌入（实验）")
+            new IslandModeChoice(IslandDisplayMode.TaskbarEmbedded, "任务栏组件（兼容）")
         };
         IslandModeBox.SelectionChanged += IslandModeBox_SelectionChanged;
         _coordinator.StateChanged += (_, _) => Dispatcher.Invoke(RefreshRows);

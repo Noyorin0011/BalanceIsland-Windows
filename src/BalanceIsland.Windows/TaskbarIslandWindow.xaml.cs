@@ -140,7 +140,6 @@ public partial class TaskbarIslandWindow : Window
 
         if (_displayMode == IslandDisplayMode.TaskbarEmbedded)
         {
-            Topmost = false;
             var result = _embedder.AttachOrUpdate(handle, FloatingWidth, FloatingHeight);
             if (result.Success)
             {

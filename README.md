@@ -8,11 +8,11 @@ Windows 任务栏 AI API 余额与用量监控工具。当前仓库是以 Androi
 
 - Windows 10 1809+ / Windows 11，C#、.NET 8、WPF 与 Win32。
 - 托盘常驻；关闭主窗口后继续运行，托盘菜单可打开、刷新、切换浮岛或退出。
-- 浮岛支持“悬浮窗”和“任务栏嵌入（实验）”两种模式并持久化选择。
-- 嵌入模式把浮岛 HWND 挂载到 Explorer 任务栏：Windows 11 居中布局位于左侧；
+- 浮岛支持“悬浮窗”和“任务栏组件（兼容）”两种模式并持久化选择；Explorer 拒绝跨进程嵌入时会自动采用 TrafficMonitor 风格的任务栏伴随窗口。
+- 任务栏组件会先尝试把浮岛 HWND 挂载到 Explorer：Windows 11 居中布局位于左侧；
   Windows 11 左对齐和 Windows 10 位于通知区域左侧。
-- Windows 11 保留 WPF layered popup 的独立 DWM surface 再挂载到任务栏，避免传统
-  `WS_CHILD` surface 在 XAML 任务栏中存在但不可见；Windows 10 使用传统 child host。
+- Explorer 拒绝跨进程挂载时，自动保留 WPF layered popup 并按任务栏坐标置顶显示；
+  该回退方式参考 TrafficMonitor，不会向 Explorer 注入 DLL，也不会让挂件消失。
 - 每 5 秒轮换账户，单击立即切换，右键打开设置。
 - 设置窗口、原生标题栏和任务栏浮岛跟随 Windows 应用深浅色模式，运行中切换主题会立即更新。
 - 同一 Provider 多账户；备注留空时显示 API Key 后四位。
