@@ -205,9 +205,10 @@ public partial class TaskbarIslandWindow : Window
         if (handle == IntPtr.Zero || taskbar == IntPtr.Zero ||
             !GetWindowRect(taskbar, out var taskbarRect))
         {
-            var x = (int)Math.Round(SystemParameters.WorkArea.Right - FloatingWidth - 16);
-            var y = (int)Math.Round(SystemParameters.WorkArea.Bottom - FloatingHeight);
-            SetWindowPos(handle, HwndTopMost, x, y, (int)FloatingWidth, (int)FloatingHeight,
+            var fallbackX = (int)Math.Round(SystemParameters.WorkArea.Right - FloatingWidth - 16);
+            var fallbackY = (int)Math.Round(SystemParameters.WorkArea.Bottom - FloatingHeight);
+            SetWindowPos(handle, HwndTopMost, fallbackX, fallbackY,
+                (int)FloatingWidth, (int)FloatingHeight,
                 SwpNoActivate | SwpShowWindow);
             return;
         }
