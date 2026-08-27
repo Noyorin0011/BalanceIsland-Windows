@@ -4,6 +4,8 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
+using MediaBrushes = System.Windows.Media.Brushes;
+using MediaColor = System.Windows.Media.Color;
 
 namespace BalanceIsland.Windows;
 
@@ -77,7 +79,7 @@ public partial class TaskbarIslandWindow : Window
         if (snapshots.Count == 0)
         {
             IslandText.Text = "Balance Island · 请添加账户";
-            IslandText.Foreground = Brushes.White;
+            IslandText.Foreground = MediaBrushes.White;
             return;
         }
         if (_index >= snapshots.Count) _index = 0;
@@ -85,10 +87,10 @@ public partial class TaskbarIslandWindow : Window
         IslandText.Text = snapshot.IslandText;
         IslandText.Foreground = snapshot.Status switch
         {
-            SnapshotStatus.Critical => new SolidColorBrush(Color.FromRgb(255, 105, 105)),
-            SnapshotStatus.Warning => new SolidColorBrush(Color.FromRgb(255, 190, 92)),
-            SnapshotStatus.Error => new SolidColorBrush(Color.FromRgb(255, 125, 125)),
-            _ => Brushes.White
+            SnapshotStatus.Critical => new SolidColorBrush(MediaColor.FromRgb(255, 105, 105)),
+            SnapshotStatus.Warning => new SolidColorBrush(MediaColor.FromRgb(255, 190, 92)),
+            SnapshotStatus.Error => new SolidColorBrush(MediaColor.FromRgb(255, 125, 125)),
+            _ => MediaBrushes.White
         };
     }
 

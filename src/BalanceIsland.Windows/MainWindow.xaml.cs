@@ -1,5 +1,9 @@
 using System.Globalization;
 using System.Windows;
+using MessageBox = System.Windows.MessageBox;
+using MessageBoxButton = System.Windows.MessageBoxButton;
+using MessageBoxImage = System.Windows.MessageBoxImage;
+using MessageBoxResult = System.Windows.MessageBoxResult;
 
 namespace BalanceIsland.Windows;
 
