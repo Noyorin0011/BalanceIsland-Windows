@@ -2,13 +2,16 @@
 
 Windows 任务栏 AI API 余额与用量监控工具。当前仓库是以 Android
 [Balance Island v0.9.2](https://github.com/Noyorin0011/BalanceIsland/releases/tag/v0.9.2)
-为行为基线的 Windows MVP。
+为行为基线建立的 Windows 版本；当前应用版本为 `0.1.1`。
 
-## MVP 已实现
+## 当前功能
 
 - Windows 10 1809+ / Windows 11，C#、.NET 8、WPF 与 Win32。
 - 托盘常驻；关闭主窗口后继续运行，托盘菜单可打开、刷新、切换浮岛或退出。
-- 任务栏内无焦点文字条：每 5 秒轮换账户，单击立即切换，右键打开设置。
+- 浮岛支持“悬浮窗”和“任务栏嵌入（实验）”两种模式并持久化选择。
+- 嵌入模式把浮岛 HWND 挂载到 Explorer 任务栏：Windows 11 居中布局位于左侧；
+  Windows 11 左对齐和 Windows 10 位于通知区域左侧。
+- 每 5 秒轮换账户，单击立即切换，右键打开设置。
 - 设置窗口、原生标题栏和任务栏浮岛跟随 Windows 应用深浅色模式，运行中切换主题会立即更新。
 - 同一 Provider 多账户；备注留空时显示 API Key 后四位。
 - API Key 清洗与 Windows Credential Manager 存储；本地 JSON 不保存完整 Key。
@@ -20,7 +23,7 @@ Windows 任务栏 AI API 余额与用量监控工具。当前仓库是以 Androi
 
 ### Provider 行为
 
-| Provider | MVP 行为 |
+| Provider | 当前行为 |
 | --- | --- |
 | DeepSeek | 官方余额、充值与赠送余额 |
 | OpenAI | `sk-admin-` 查询组织本月成本/限制；其他 Key 仅验证 |
@@ -32,7 +35,7 @@ Windows 任务栏 AI API 余额与用量监控工具。当前仓库是以 Androi
 
 ## 与 Android v0.9.2 的边界
 
-这个提交是可运行 MVP，不宣称已经完成逐项 UI 等价。以下内容留给后续里程碑：
+当前 Windows 版不宣称已经完成逐项 UI 等价。以下内容留给后续版本：
 
 - ChatGPT/Codex 非公开套餐接口、隔离登录会话、5 分钟实验页自动读取及重置周期通知。
 - 自定义轮播分组、固定 Provider、套餐与 API 账户混合轮播。
@@ -53,7 +56,7 @@ dotnet build BalanceIsland-Windows.sln -c Release
 dotnet run --project src/BalanceIsland.Windows/BalanceIsland.Windows.csproj
 ```
 
-GitHub Actions 会在 Windows runner 上构建并上传 `win-x64` MVP artifact。
+GitHub Actions 会在 Windows runner 上构建并上传 `win-x64` artifact。
 
 ## 数据与安全
 
@@ -61,7 +64,7 @@ GitHub Actions 会在 Windows runner 上构建并上传 `win-x64` MVP artifact�
 - 账户、Key 后四位、余额快照与刷新状态位于
   `%LOCALAPPDATA%\BalanceIsland\state.json`。
 - 日志和错误信息不得输出完整 API Key。
-- 应用只请求各 Provider 的官方 HTTPS API；MVP 不内置代理或证书绕过。
+- 应用只请求各 Provider 的官方 HTTPS API；不内置代理或证书绕过。
 
 ## 许可证
 

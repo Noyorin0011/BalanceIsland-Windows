@@ -11,6 +11,8 @@ namespace BalanceIsland.Windows;
 
 public partial class TaskbarIslandWindow : Window
 {
+    private const double FloatingWidth = 310;
+    private const double FloatingHeight = 28;
     private const int AbmGetTaskbarPos = 5;
     private const int GwlExStyle = -20;
     private const long WsExToolWindow = 0x00000080L;
@@ -19,21 +21,46 @@ public partial class TaskbarIslandWindow : Window
     private const int MaNoActivate = 3;
 
     private readonly BalanceCoordinator _coordinator;
+    private readonly TaskbarEmbedder _embedder = new();
     private readonly DispatcherTimer _carouselTimer;
+    private readonly DispatcherTimer _layoutTimer;
+    private IslandDisplayMode _displayMode;
+    private uint _taskbarCreatedMessage;
+    private string _lastModeStatus = "";
     private int _index;
+
+    public event EventHandler<string>? DisplayModeStatusChanged;
+
+    public bool IsNativeHandleAlive
+    {
+        get
+        {
+            var handle = new WindowInteropHelper(this).Handle;
+            return handle != IntPtr.Zero && IsWindow(handle);
+        }
+    }
 
     public TaskbarIslandWindow(BalanceCoordinator coordinator)
     {
         InitializeComponent();
         _coordinator = coordinator;
         _coordinator.StateChanged += (_, _) => Dispatcher.Invoke(Render);
+        _displayMode = _coordinator.State.IslandDisplayMode;
         _carouselTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
         _carouselTimer.Tick += (_, _) => Next();
         _carouselTimer.Start();
+        _layoutTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _layoutTimer.Tick += (_, _) => ApplyDisplayMode();
+        _layoutTimer.Start();
         Loaded += (_, _) =>
         {
-            PositionOverTaskbar();
+            ApplyDisplayMode();
             Render();
+        };
+        IsVisibleChanged += (_, _) =>
+        {
+            if (IsVisible) ApplyDisplayMode();
+            else _embedder.Detach();
         };
     }
 
@@ -43,6 +70,7 @@ public partial class TaskbarIslandWindow : Window
         var handle = new WindowInteropHelper(this).Handle;
         var source = HwndSource.FromHwnd(handle);
         source?.AddHook(WindowProc);
+        _taskbarCreatedMessage = RegisterWindowMessage("TaskbarCreated");
         var style = GetWindowLongPtr(handle, GwlExStyle).ToInt64();
         SetWindowLongPtr(handle, GwlExStyle,
             new IntPtr(style | WsExToolWindow | WsExNoActivate));
@@ -51,8 +79,18 @@ public partial class TaskbarIslandWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _carouselTimer.Stop();
+        _layoutTimer.Stop();
+        _embedder.Detach();
         base.OnClosed(e);
     }
+
+    public void SetDisplayMode(IslandDisplayMode mode)
+    {
+        _displayMode = mode;
+        ApplyDisplayMode();
+    }
+
+    public void ReconcileDisplayMode() => ApplyDisplayMode();
 
     private void Island_LeftClick(object sender, MouseButtonEventArgs e) => Next();
 
@@ -94,7 +132,48 @@ public partial class TaskbarIslandWindow : Window
         };
     }
 
-    private void PositionOverTaskbar()
+    private void ApplyDisplayMode()
+    {
+        if (!IsLoaded || !IsVisible) return;
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero || !IsWindow(handle)) return;
+
+        if (_displayMode == IslandDisplayMode.TaskbarEmbedded)
+        {
+            Topmost = false;
+            var result = _embedder.AttachOrUpdate(handle, FloatingWidth, FloatingHeight);
+            if (result.Success)
+            {
+                if (Math.Abs(Width - result.WidthDip) > 0.5) Width = result.WidthDip;
+                ReportModeStatus(result.Message);
+                return;
+            }
+
+            _embedder.Detach();
+            Width = FloatingWidth;
+            Height = FloatingHeight;
+            Topmost = true;
+            PositionFloatingOverTaskbar();
+            ReportModeStatus(result.Message);
+            return;
+        }
+
+        _embedder.Detach();
+        Width = FloatingWidth;
+        Height = FloatingHeight;
+        Topmost = true;
+        PositionFloatingOverTaskbar();
+        ReportModeStatus("悬浮在任务栏上方");
+    }
+
+    private void ReportModeStatus(string status)
+    {
+        if (_lastModeStatus == status) return;
+        _lastModeStatus = status;
+        DisplayModeStatusChanged?.Invoke(this, status);
+    }
+
+    private void PositionFloatingOverTaskbar()
     {
         var data = new AppBarData { cbSize = Marshal.SizeOf<AppBarData>() };
         if (SHAppBarMessage(AbmGetTaskbarPos, ref data) == IntPtr.Zero)
@@ -122,9 +201,14 @@ public partial class TaskbarIslandWindow : Window
         }
     }
 
-    private static IntPtr WindowProc(
+    private IntPtr WindowProc(
         IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        if (_taskbarCreatedMessage != 0 && message == _taskbarCreatedMessage)
+        {
+            Dispatcher.BeginInvoke(ApplyDisplayMode);
+            return IntPtr.Zero;
+        }
         if (message == WmMouseActivate)
         {
             handled = true;
@@ -161,4 +245,11 @@ public partial class TaskbarIslandWindow : Window
 
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
     private static extern IntPtr SetWindowLongPtr(IntPtr window, int index, IntPtr newLong);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindow(IntPtr window);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern uint RegisterWindowMessage(string message);
 }

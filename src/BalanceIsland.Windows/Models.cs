@@ -38,6 +38,12 @@ public enum AnomalyMode
     Both
 }
 
+public enum IslandDisplayMode
+{
+    Floating,
+    TaskbarEmbedded
+}
+
 public static class ProviderInfo
 {
     public static string DisplayName(this Provider value) => value switch
@@ -175,6 +181,8 @@ public sealed class AppState
     public Dictionary<string, DailyUsageState> DailyUsage { get; set; } = [];
     public Dictionary<string, BalanceAlertState> Alerts { get; set; } = [];
     public bool IslandEnabled { get; set; } = true;
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public IslandDisplayMode IslandDisplayMode { get; set; } = IslandDisplayMode.Floating;
 }
 
 public sealed record ApiCredential(Account Account, string ApiKey);

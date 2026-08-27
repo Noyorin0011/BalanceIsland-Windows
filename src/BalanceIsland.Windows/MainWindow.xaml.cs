@@ -10,7 +10,9 @@ namespace BalanceIsland.Windows;
 public partial class MainWindow : Window
 {
     private readonly BalanceCoordinator _coordinator;
+    private bool _updatingIslandMode;
     public event EventHandler<bool>? IslandVisibilityRequested;
+    public event EventHandler<IslandDisplayMode>? IslandDisplayModeRequested;
 
     public MainWindow(BalanceCoordinator coordinator)
     {
@@ -20,9 +22,15 @@ public partial class MainWindow : Window
             .Select(value => new ProviderChoice(value, value.DisplayName()))
             .ToArray();
         ProviderBox.SelectedIndex = 0;
+        IslandModeBox.ItemsSource = new[]
+        {
+            new IslandModeChoice(IslandDisplayMode.Floating, "悬浮窗"),
+            new IslandModeChoice(IslandDisplayMode.TaskbarEmbedded, "任务栏嵌入（实验）")
+        };
+        IslandModeBox.SelectionChanged += IslandModeBox_SelectionChanged;
         _coordinator.StateChanged += (_, _) => Dispatcher.Invoke(RefreshRows);
         RefreshRows();
-        UpdateIslandButton(_coordinator.State.IslandEnabled);
+        UpdateIslandControls(_coordinator.State.IslandEnabled, _coordinator.State.IslandDisplayMode);
     }
 
     private async void AddAccount_Click(object sender, RoutedEventArgs e)
@@ -97,6 +105,27 @@ public partial class MainWindow : Window
         IslandButton.Content = visible ? "隐藏任务栏浮岛" : "显示任务栏浮岛";
     }
 
+    public void UpdateIslandControls(bool visible, IslandDisplayMode mode, string? status = null)
+    {
+        UpdateIslandButton(visible);
+        _updatingIslandMode = true;
+        IslandModeBox.SelectedValue = mode;
+        _updatingIslandMode = false;
+        IslandModeStatus.Text = status ?? mode switch
+        {
+            IslandDisplayMode.TaskbarEmbedded => "挂载到 Explorer 任务栏；不可用时自动回退悬浮",
+            _ => "悬浮在任务栏上方"
+        };
+    }
+
+    public void UpdateIslandModeStatus(string status) => IslandModeStatus.Text = status;
+
+    private void IslandModeBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (_updatingIslandMode || IslandModeBox.SelectedValue is not IslandDisplayMode mode) return;
+        IslandDisplayModeRequested?.Invoke(this, mode);
+    }
+
     private void RefreshRows()
     {
         var accounts = _coordinator.State.Accounts.ToDictionary(account => account.Id);
@@ -134,5 +163,6 @@ public partial class MainWindow : Window
 }
 
 public sealed record ProviderChoice(Provider Value, string Display);
+public sealed record IslandModeChoice(IslandDisplayMode Value, string Display);
 public sealed record AccountRow(
     string Id, string Provider, string Label, string Primary, string Secondary, string Updated);

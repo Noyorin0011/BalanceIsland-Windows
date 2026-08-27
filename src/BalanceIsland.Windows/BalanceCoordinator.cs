@@ -80,6 +80,13 @@ public sealed class BalanceCoordinator : IDisposable
         SaveAndNotify();
     }
 
+    public void SetIslandDisplayMode(IslandDisplayMode mode)
+    {
+        if (State.IslandDisplayMode == mode) return;
+        State.IslandDisplayMode = mode;
+        SaveAndNotify();
+    }
+
     public async Task RefreshDueAsync(bool force, string? targetCredentialId = null)
     {
         if (!await _refreshLock.WaitAsync(0)) return;
