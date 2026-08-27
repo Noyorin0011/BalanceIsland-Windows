@@ -1,0 +1,45 @@
+name: Windows Build
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Windows app
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore BalanceIsland-Windows.sln
+
+      - name: Build
+        run: dotnet build BalanceIsland-Windows.sln --configuration Release --no-restore
+
+      - name: Publish portable x64 build
+        run: >-
+          dotnet publish src/BalanceIsland.Windows/BalanceIsland.Windows.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained false
+          --output artifacts/win-x64
+          -p:PublishSingleFile=true
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: BalanceIsland-Windows-v0.1.1-win-x64
+          path: artifacts/win-x64/
+          if-no-files-found: error
