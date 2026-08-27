@@ -45,6 +45,7 @@ public sealed class TaskbarEmbedder
     private IntPtr _rejectedTaskbar;
     private bool _embeddingRejected;
     private bool _compatibilityOverlay;
+    private WindowPlacement? _lastPlacement;
 
     public bool IsAttached => _window != IntPtr.Zero && IsWindow(_window) &&
                               _taskbar != IntPtr.Zero && IsWindow(_taskbar) &&
@@ -121,15 +122,29 @@ public sealed class TaskbarEmbedder
                 window, taskbar, xScreen, yScreen, width, height, centered, dpi);
         }
 
+        var placement = new WindowPlacement(taskbar, x, y, width, height, false);
+        var placementLabel = centered ? "任务栏左侧" : "通知区域左侧";
+        var host = popupParented ? "layered popup host" : "child host";
+        var label = $"已嵌入{placementLabel}（{host}）";
+        if (!_compatibilityOverlay && _window == window && _taskbar == taskbar &&
+            GetParent(window) == taskbar && _lastPlacement == placement && IsSurfaceVisible(window))
+        {
+            return TaskbarAttachResult.Succeeded(label, width * 96d / dpi);
+        }
+
         var style = GetWindowLongPtr(window, GwlStyle).ToInt64();
         var hostedStyle = popupParented
             ? (style & ~WsChild) | WsPopup
             : (style & ~WsPopup) | WsChild | WsClipSiblings;
-        SetWindowLongPtr(window, GwlStyle, new IntPtr(hostedStyle));
+        var styleChanged = hostedStyle != style;
+        if (styleChanged) SetWindowLongPtr(window, GwlStyle, new IntPtr(hostedStyle));
         var exStyle = GetWindowLongPtr(window, GwlExStyle).ToInt64();
-        SetWindowLongPtr(window, GwlExStyle,
-            new IntPtr(exStyle | WsExLayered | WsExToolWindow | WsExNoActivate));
+        var hostedExStyle = exStyle | WsExLayered | WsExToolWindow | WsExNoActivate;
+        styleChanged |= hostedExStyle != exStyle;
+        if (hostedExStyle != exStyle)
+            SetWindowLongPtr(window, GwlExStyle, new IntPtr(hostedExStyle));
 
+        var parentChanged = false;
         if (GetParent(window) != taskbar)
         {
             SetLastError(0);
@@ -141,19 +156,27 @@ public sealed class TaskbarEmbedder
                 return PlaceCompatibilityOverlay(
                     window, taskbar, xScreen, yScreen, width, height, centered, dpi);
             }
+            parentChanged = true;
         }
 
+        var wasVisible = IsWindowVisible(window);
+        var positionFlags = SwpNoActivate;
+        if (styleChanged || parentChanged) positionFlags |= SwpFrameChanged;
+        if (!wasVisible) positionFlags |= SwpShowWindow;
         if (!SetWindowPos(window, IntPtr.Zero, x, y, width, height,
-                SwpNoActivate | SwpFrameChanged | SwpShowWindow))
+                positionFlags))
         {
             RestoreWindow(window);
             return TaskbarAttachResult.Failed($"任务栏定位失败（Win32 {Marshal.GetLastWin32Error()}）");
         }
 
-        ShowWindow(window, SwShowNoActivate);
-        RedrawWindow(window, IntPtr.Zero, IntPtr.Zero,
-            RdwInvalidate | RdwFrame | RdwAllChildren | RdwUpdateNow);
-        DwmFlush();
+        if (!wasVisible) ShowWindow(window, SwShowNoActivate);
+        if (styleChanged || parentChanged || !wasVisible)
+        {
+            RedrawWindow(window, IntPtr.Zero, IntPtr.Zero,
+                RdwInvalidate | RdwFrame | RdwAllChildren | RdwUpdateNow);
+            DwmFlush();
+        }
         if (!IsWindowVisible(window))
         {
             RestoreWindow(window);
@@ -168,9 +191,7 @@ public sealed class TaskbarEmbedder
         _window = window;
         _taskbar = taskbar;
         _compatibilityOverlay = false;
-        var placement = centered ? "任务栏左侧" : "通知区域左侧";
-        var host = popupParented ? "layered popup host" : "child host";
-        var label = $"已嵌入{placement}（{host}）";
+        _lastPlacement = placement;
         return TaskbarAttachResult.Succeeded(label, width * 96d / dpi);
     }
 
@@ -187,26 +208,47 @@ public sealed class TaskbarEmbedder
         // TrafficMonitor-style fallback: keep a no-activate top-level window visually inside
         // the taskbar. Explorer builds that reject cross-process parenting still get a visible,
         // independently rendered surface and can rebuild the taskbar without taking us down.
-        if (GetParent(window) != IntPtr.Zero) SetParent(window, IntPtr.Zero);
+        var placement = new WindowPlacement(taskbar, x, y, width, height, true);
+        var placementLabel = centered ? "任务栏左侧" : "通知区域左侧";
+        var label = $"已显示于{placementLabel}（TrafficMonitor 兼容模式）";
+        if (_compatibilityOverlay && _window == window && _taskbar == taskbar &&
+            GetParent(window) == IntPtr.Zero && _lastPlacement == placement && IsSurfaceVisible(window))
+        {
+            return TaskbarAttachResult.Succeeded(label, width * 96d / dpi);
+        }
+
+        var parentChanged = GetParent(window) != IntPtr.Zero;
+        if (parentChanged) SetParent(window, IntPtr.Zero);
 
         var style = GetWindowLongPtr(window, GwlStyle).ToInt64();
-        SetWindowLongPtr(window, GwlStyle, new IntPtr((style & ~WsChild) | WsPopup));
+        var hostedStyle = (style & ~WsChild) | WsPopup;
+        var styleChanged = hostedStyle != style;
+        if (styleChanged) SetWindowLongPtr(window, GwlStyle, new IntPtr(hostedStyle));
         var exStyle = GetWindowLongPtr(window, GwlExStyle).ToInt64();
-        SetWindowLongPtr(window, GwlExStyle,
-            new IntPtr(exStyle | WsExLayered | WsExToolWindow | WsExNoActivate));
+        var hostedExStyle = exStyle | WsExLayered | WsExToolWindow | WsExNoActivate;
+        styleChanged |= hostedExStyle != exStyle;
+        if (hostedExStyle != exStyle)
+            SetWindowLongPtr(window, GwlExStyle, new IntPtr(hostedExStyle));
 
+        var wasVisible = IsWindowVisible(window);
+        var positionFlags = SwpNoActivate;
+        if (styleChanged || parentChanged) positionFlags |= SwpFrameChanged;
+        if (!wasVisible) positionFlags |= SwpShowWindow;
         if (!SetWindowPos(window, HwndTopMost, x, y, width, height,
-                SwpNoActivate | SwpFrameChanged | SwpShowWindow))
+                positionFlags))
         {
             RestoreWindow(window);
             return TaskbarAttachResult.Failed(
                 $"任务栏兼容定位失败（Win32 {Marshal.GetLastWin32Error()}），已回退悬浮模式");
         }
 
-        ShowWindow(window, SwShowNoActivate);
-        RedrawWindow(window, IntPtr.Zero, IntPtr.Zero,
-            RdwInvalidate | RdwFrame | RdwAllChildren | RdwUpdateNow);
-        DwmFlush();
+        if (!wasVisible) ShowWindow(window, SwShowNoActivate);
+        if (styleChanged || parentChanged || !wasVisible)
+        {
+            RedrawWindow(window, IntPtr.Zero, IntPtr.Zero,
+                RdwInvalidate | RdwFrame | RdwAllChildren | RdwUpdateNow);
+            DwmFlush();
+        }
         if (!IsWindowVisible(window))
         {
             RestoreWindow(window);
@@ -222,9 +264,8 @@ public sealed class TaskbarEmbedder
         _window = window;
         _taskbar = taskbar;
         _compatibilityOverlay = true;
-        var placement = centered ? "任务栏左侧" : "通知区域左侧";
-        return TaskbarAttachResult.Succeeded(
-            $"已显示于{placement}（TrafficMonitor 兼容模式）", width * 96d / dpi);
+        _lastPlacement = placement;
+        return TaskbarAttachResult.Succeeded(label, width * 96d / dpi);
     }
 
     public void Detach()
@@ -233,6 +274,7 @@ public sealed class TaskbarEmbedder
         _window = IntPtr.Zero;
         _taskbar = IntPtr.Zero;
         _compatibilityOverlay = false;
+        _lastPlacement = null;
     }
 
     private void CaptureStyles(IntPtr window)
@@ -254,6 +296,14 @@ public sealed class TaskbarEmbedder
         }
         SetWindowPos(window, HwndNoTopMost, 0, 0, 0, 0,
             0x0001 | 0x0002 | SwpNoActivate | SwpFrameChanged);
+        _lastPlacement = null;
+    }
+
+    private static bool IsSurfaceVisible(IntPtr window)
+    {
+        if (!IsWindowVisible(window)) return false;
+        return DwmGetWindowAttribute(window, DwmwaCloaked, out var cloaked, sizeof(int)) != 0 ||
+               cloaked == 0;
     }
 
     private static bool IsCenteredTaskbar(Span startButton, NativeRect taskbarRect)
@@ -368,6 +418,9 @@ public sealed class TaskbarEmbedder
     {
         public static TaskbarGeometry Empty => new(Span.Invalid, Span.Invalid, Span.Invalid, Span.Invalid);
     }
+
+    private readonly record struct WindowPlacement(
+        IntPtr Taskbar, int X, int Y, int Width, int Height, bool CompatibilityOverlay);
 
     private readonly record struct Span(int Left, int Right)
     {

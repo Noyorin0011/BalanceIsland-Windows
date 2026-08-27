@@ -6,6 +6,7 @@
 
 - 修复 Windows 11 选择任务栏嵌入后浮岛完全消失的问题。
 - 参考 TrafficMonitor：Explorer 拒绝跨进程嵌入时自动切换到通知区域/任务栏左侧的置顶伴随窗口，不再隐藏挂件或只显示错误。
+- 任务栏位置未变化时不再重复触发窗口框架刷新、强制重绘和 DWM 刷新，消除兼容模式的周期性闪烁。
 - Windows 11 改用 popup-parented layered surface，让 WPF 浮岛保留独立 DWM 合成层；Windows 10 继续使用 child host。
 - 嵌入后强制刷新 DWM，并检测不可见或 cloaked 状态；检测失败时立即恢复悬浮模式并显示原因。
 
