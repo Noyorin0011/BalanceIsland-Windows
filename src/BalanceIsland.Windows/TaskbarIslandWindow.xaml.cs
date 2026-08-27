@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
+using MediaBrush = System.Windows.Media.Brush;
 using MediaColor = System.Windows.Media.Color;
 
 namespace BalanceIsland.Windows;
@@ -89,7 +90,7 @@ public partial class TaskbarIslandWindow : Window
             SnapshotStatus.Critical => new SolidColorBrush(MediaColor.FromRgb(255, 105, 105)),
             SnapshotStatus.Warning => new SolidColorBrush(MediaColor.FromRgb(255, 190, 92)),
             SnapshotStatus.Error => new SolidColorBrush(MediaColor.FromRgb(255, 125, 125)),
-            _ => (Brush)FindResource("PrimaryText")
+            _ => (MediaBrush)FindResource("PrimaryText")
         };
     }
 
