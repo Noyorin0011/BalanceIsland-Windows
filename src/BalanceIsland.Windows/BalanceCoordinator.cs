@@ -87,6 +87,25 @@ public sealed class BalanceCoordinator : IDisposable
         SaveAndNotify();
     }
 
+    public void SetIslandLayout(IslandPositionPreset position, IslandSizePreset size)
+    {
+        if (State.IslandPositionPreset == position && State.IslandSizePreset == size) return;
+        State.IslandPositionPreset = position;
+        State.IslandSizePreset = size;
+        SaveAndNotify();
+    }
+
+    public void SetIslandCustomLayout(double leftDip, double topDip, double widthDip, double heightDip)
+    {
+        State.IslandPositionPreset = IslandPositionPreset.Custom;
+        State.IslandSizePreset = IslandSizePreset.Custom;
+        State.IslandCustomLeftDip = leftDip;
+        State.IslandCustomTopDip = topDip;
+        State.IslandCustomWidthDip = Math.Clamp(widthDip, 160, 480);
+        State.IslandCustomHeightDip = Math.Clamp(heightDip, 28, 100);
+        SaveAndNotify();
+    }
+
     public async Task RefreshDueAsync(bool force, string? targetCredentialId = null)
     {
         if (!await _refreshLock.WaitAsync(0)) return;

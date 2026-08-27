@@ -13,6 +13,7 @@ public partial class App : System.Windows.Application
     private BalanceCoordinator? _coordinator;
     private SystemThemeManager? _themeManager;
     private DispatcherTimer? _islandHealthTimer;
+    private bool _islandEditMode;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -33,6 +34,8 @@ public partial class App : System.Windows.Application
         CreateIslandWindow();
         _mainWindow.IslandVisibilityRequested += (_, visible) => SetIslandVisible(visible);
         _mainWindow.IslandDisplayModeRequested += (_, mode) => SetIslandDisplayMode(mode);
+        _mainWindow.IslandLayoutRequested += (_, request) => SetIslandLayout(request);
+        _mainWindow.IslandEditModeRequested += (_, enabled) => SetIslandEditMode(enabled);
         _mainWindow.Closing += (_, args) =>
         {
             if (_coordinator.IsExiting) return;
@@ -124,6 +127,21 @@ public partial class App : System.Windows.Application
             ? IslandDisplayMode.Floating
             : mode;
 
+    private void SetIslandLayout(IslandLayoutRequest request)
+    {
+        if (_coordinator is null) return;
+        _coordinator.SetIslandLayout(request.Position, request.Size);
+        _mainWindow?.UpdateIslandLayoutControls(request.Position, request.Size);
+        _island?.ReconcileDisplayMode();
+    }
+
+    private void SetIslandEditMode(bool enabled)
+    {
+        _islandEditMode = enabled;
+        CreateIslandWindow();
+        _island?.SetEditMode(enabled);
+    }
+
     private void CreateIslandWindow()
     {
         if (_coordinator is null || _themeManager is null) return;
@@ -139,6 +157,7 @@ public partial class App : System.Windows.Application
                 Dispatcher.BeginInvoke(CreateIslandWindow);
         };
         _themeManager.Track(island);
+        island.SetEditMode(_islandEditMode);
         _island = island;
     }
 

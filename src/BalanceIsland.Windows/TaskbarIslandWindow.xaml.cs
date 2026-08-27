@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Threading;
@@ -7,15 +8,25 @@ using MediaBrushes = System.Windows.Media.Brushes;
 using MediaColor = System.Windows.Media.Color;
 using MediaImageSource = System.Windows.Media.ImageSource;
 using MediaSolidColorBrush = System.Windows.Media.SolidColorBrush;
+using MediaVisualTreeHelper = System.Windows.Media.VisualTreeHelper;
 
 namespace BalanceIsland.Windows;
 
 public partial class TaskbarIslandWindow : Window
 {
-    private const double FloatingWidth = 225;
-    private const double FloatingHeight = 38;
+    private const double CompactWidth = 190;
+    private const double CompactHeight = 32;
+    private const double StandardWidth = 225;
+    private const double StandardHeight = 38;
+    private const double LargeWidth = 285;
+    private const double LargeHeight = 48;
+    private const double MinimumWidth = 160;
+    private const double MinimumHeight = 28;
+    private const double MaximumWidth = 480;
+    private const double MaximumHeight = 100;
     private const int GwlExStyle = -20;
     private const long WsExToolWindow = 0x00000080L;
+    private const long WsExTransparent = 0x00000020L;
     private const long WsExNoActivate = 0x08000000L;
     private const int WmMouseActivate = 0x0021;
     private const int MaNoActivate = 3;
@@ -26,7 +37,11 @@ public partial class TaskbarIslandWindow : Window
     private const int ObjidWindow = 0;
     private const uint WineventOutOfContext = 0x0000;
     private const uint WineventSkipOwnProcess = 0x0002;
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpNoMove = 0x0002;
+    private const uint SwpNoZOrder = 0x0004;
     private const uint SwpNoActivate = 0x0010;
+    private const uint SwpFrameChanged = 0x0020;
     private const uint SwpShowWindow = 0x0040;
     private static readonly IntPtr HwndTopMost = new(-1);
     private static readonly IntPtr HwndBottom = new(1);
@@ -44,6 +59,8 @@ public partial class TaskbarIslandWindow : Window
     private IntPtr _foregroundHook;
     private IntPtr _minimizeHook;
     private IntPtr _locationHook;
+    private bool _editMode;
+    private bool _editingGesture;
     private int _index;
 
     public event EventHandler<string>? DisplayModeStatusChanged;
@@ -95,9 +112,7 @@ public partial class TaskbarIslandWindow : Window
         var source = HwndSource.FromHwnd(handle);
         source?.AddHook(WindowProc);
         _taskbarCreatedMessage = RegisterWindowMessage("TaskbarCreated");
-        var style = GetWindowLongPtr(handle, GwlExStyle).ToInt64();
-        SetWindowLongPtr(handle, GwlExStyle,
-            new IntPtr(style | WsExToolWindow | WsExNoActivate));
+        ApplyInteractionStyle(handle);
         _foregroundHook = SetWinEventHook(
             EventSystemForeground, EventSystemForeground, IntPtr.Zero,
             _winEventDelegate, 0, 0, WineventOutOfContext | WineventSkipOwnProcess);
@@ -131,7 +146,35 @@ public partial class TaskbarIslandWindow : Window
 
     public void ReconcileDisplayMode() => ApplyDisplayMode();
 
-    private void Island_LeftClick(object sender, MouseButtonEventArgs e) => Next();
+    public void SetEditMode(bool enabled)
+    {
+        _editMode = enabled;
+        EditChrome.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+        IslandSurface.ToolTip = enabled
+            ? "拖动浮岛移动；拖拽边缘或四角缩放"
+            : "已锁定并允许鼠标穿透";
+
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle != IntPtr.Zero && IsWindow(handle)) ApplyInteractionStyle(handle);
+        _lastFloatingPlacement = null;
+        ApplyDisplayMode();
+    }
+
+    private void ApplyInteractionStyle(IntPtr handle)
+    {
+        var style = GetWindowLongPtr(handle, GwlExStyle).ToInt64();
+        style |= WsExToolWindow | WsExNoActivate;
+        if (_editMode) style &= ~WsExTransparent;
+        else style |= WsExTransparent;
+        SetWindowLongPtr(handle, GwlExStyle, new IntPtr(style));
+        SetWindowPos(handle, IntPtr.Zero, 0, 0, 0, 0,
+            SwpNoSize | SwpNoMove | SwpNoZOrder | SwpNoActivate | SwpFrameChanged);
+    }
+
+    private void Island_LeftClick(object sender, MouseButtonEventArgs e)
+    {
+        if (!_editMode) Next();
+    }
 
     private void Island_RightClick(object sender, MouseButtonEventArgs e)
     {
@@ -141,6 +184,104 @@ public partial class TaskbarIslandWindow : Window
             if (main.WindowState == WindowState.Minimized) main.WindowState = WindowState.Normal;
             main.Activate();
         }
+    }
+
+    private void IslandSurface_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!_editMode || e.LeftButton != MouseButtonState.Pressed || IsInsideThumb(e.OriginalSource))
+            return;
+
+        _editingGesture = true;
+        e.Handled = true;
+        try
+        {
+            DragMove();
+        }
+        catch (InvalidOperationException)
+        {
+            // The mouse can be released before WPF enters its modal move loop.
+        }
+        finally
+        {
+            _editingGesture = false;
+            CaptureCustomLayout();
+        }
+    }
+
+    private static bool IsInsideThumb(object? source)
+    {
+        var current = source as DependencyObject;
+        while (current is not null)
+        {
+            if (current is Thumb) return true;
+            current = MediaVisualTreeHelper.GetParent(current);
+        }
+        return false;
+    }
+
+    private void ResizeThumb_DragDelta(object sender, DragDeltaEventArgs e)
+    {
+        if (!_editMode || sender is not Thumb { Tag: string edge }) return;
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero || !GetWindowRect(handle, out var rectangle)) return;
+
+        var taskbar = FindWindow("Shell_TrayWnd", null);
+        var dpi = taskbar == IntPtr.Zero ? GetDpiForWindow(handle) : GetDpiForWindow(taskbar);
+        if (dpi == 0) dpi = 96;
+        var scale = dpi / 96d;
+        var horizontal = (int)Math.Round(e.HorizontalChange * scale);
+        var vertical = (int)Math.Round(e.VerticalChange * scale);
+
+        var left = rectangle.Left;
+        var top = rectangle.Top;
+        var right = rectangle.Right;
+        var bottom = rectangle.Bottom;
+        if (edge.Contains("Left", StringComparison.Ordinal)) left += horizontal;
+        if (edge.Contains("Right", StringComparison.Ordinal)) right += horizontal;
+        if (edge.Contains("Top", StringComparison.Ordinal)) top += vertical;
+        if (edge.Contains("Bottom", StringComparison.Ordinal)) bottom += vertical;
+
+        var minimumWidthPx = (int)Math.Round(MinimumWidth * scale);
+        var minimumHeightPx = (int)Math.Round(MinimumHeight * scale);
+        var maximumWidthPx = (int)Math.Round(MaximumWidth * scale);
+        var maximumHeightPx = (int)Math.Round(MaximumHeight * scale);
+        var width = Math.Clamp(right - left, minimumWidthPx, maximumWidthPx);
+        var height = Math.Clamp(bottom - top, minimumHeightPx, maximumHeightPx);
+        if (edge.Contains("Left", StringComparison.Ordinal)) left = right - width;
+        else right = left + width;
+        if (edge.Contains("Top", StringComparison.Ordinal)) top = bottom - height;
+        else bottom = top + height;
+
+        _editingGesture = true;
+        _lastFloatingPlacement = null;
+        SetWindowPos(handle, IntPtr.Zero, left, top, right - left, bottom - top,
+            SwpNoActivate | SwpNoZOrder);
+    }
+
+    private void ResizeThumb_DragCompleted(object sender, DragCompletedEventArgs e)
+    {
+        if (!_editMode) return;
+        _editingGesture = false;
+        CaptureCustomLayout();
+    }
+
+    private void CaptureCustomLayout()
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        var taskbar = FindWindow("Shell_TrayWnd", null);
+        if (handle == IntPtr.Zero || taskbar == IntPtr.Zero ||
+            !GetWindowRect(handle, out var rectangle) ||
+            !GetWindowRect(taskbar, out var taskbarRect)) return;
+
+        var dpi = GetDpiForWindow(taskbar);
+        if (dpi == 0) dpi = 96;
+        var scale = dpi / 96d;
+        _coordinator.SetIslandCustomLayout(
+            (rectangle.Left - taskbarRect.Left) / scale,
+            (rectangle.Top - taskbarRect.Top) / scale,
+            (rectangle.Right - rectangle.Left) / scale,
+            (rectangle.Bottom - rectangle.Top) / scale);
+        _lastFloatingPlacement = null;
     }
 
     private void Next()
@@ -197,11 +338,14 @@ public partial class TaskbarIslandWindow : Window
         if (!IsLoaded || !IsVisible) return;
         var handle = new WindowInteropHelper(this).Handle;
         if (handle == IntPtr.Zero || !IsWindow(handle)) return;
+        if (_editingGesture) return;
+
+        var size = CurrentSizeDip();
 
         if (_displayMode == IslandDisplayMode.TaskbarEmbedded &&
             !OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
         {
-            var result = _embedder.AttachOrUpdate(handle, FloatingWidth, FloatingHeight);
+            var result = _embedder.AttachOrUpdate(handle, size.Width, size.Height);
             if (result.Success)
             {
                 ReportModeStatus(result.Message);
@@ -209,21 +353,32 @@ public partial class TaskbarIslandWindow : Window
             }
 
             _embedder.Detach();
-            Width = FloatingWidth;
-            Height = FloatingHeight;
+            Width = size.Width;
+            Height = size.Height;
             PositionFloatingOverTaskbar();
             ReportModeStatus(result.Message);
             return;
         }
 
         _embedder.Detach();
-        Width = FloatingWidth;
-        Height = FloatingHeight;
+        Width = size.Width;
+        Height = size.Height;
         PositionFloatingOverTaskbar();
         ReportModeStatus(OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000)
             ? "Windows 11 · 透明悬浮模式"
             : "透明悬浮在任务栏区域");
     }
+
+    private (double Width, double Height) CurrentSizeDip() =>
+        _coordinator.State.IslandSizePreset switch
+        {
+            IslandSizePreset.Compact => (CompactWidth, CompactHeight),
+            IslandSizePreset.Large => (LargeWidth, LargeHeight),
+            IslandSizePreset.Custom => (
+                Math.Clamp(_coordinator.State.IslandCustomWidthDip, MinimumWidth, MaximumWidth),
+                Math.Clamp(_coordinator.State.IslandCustomHeightDip, MinimumHeight, MaximumHeight)),
+            _ => (StandardWidth, StandardHeight)
+        };
 
     private static IslandDisplayMode ResolveDisplayMode(IslandDisplayMode mode) =>
         OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000) ||
@@ -241,14 +396,15 @@ public partial class TaskbarIslandWindow : Window
     private void PositionFloatingOverTaskbar()
     {
         var handle = new WindowInteropHelper(this).Handle;
+        var size = CurrentSizeDip();
         var taskbar = FindWindow("Shell_TrayWnd", null);
         if (handle == IntPtr.Zero || taskbar == IntPtr.Zero ||
             !GetWindowRect(taskbar, out var taskbarRect))
         {
-            var fallbackX = (int)Math.Round(SystemParameters.WorkArea.Right - FloatingWidth - 16);
-            var fallbackY = (int)Math.Round(SystemParameters.WorkArea.Bottom - FloatingHeight);
+            var fallbackX = (int)Math.Round(SystemParameters.WorkArea.Right - size.Width - 16);
+            var fallbackY = (int)Math.Round(SystemParameters.WorkArea.Bottom - size.Height);
             SetWindowPos(handle, HwndTopMost, fallbackX, fallbackY,
-                (int)FloatingWidth, (int)FloatingHeight,
+                (int)Math.Round(size.Width), (int)Math.Round(size.Height),
                 SwpNoActivate | SwpShowWindow);
             return;
         }
@@ -256,25 +412,42 @@ public partial class TaskbarIslandWindow : Window
         var dpi = GetDpiForWindow(taskbar);
         if (dpi == 0) dpi = 96;
         var scale = dpi / 96d;
-        var widthPx = Math.Max(1, (int)Math.Round(FloatingWidth * scale));
-        var heightPx = Math.Max(1, (int)Math.Round(FloatingHeight * scale));
+        var widthPx = Math.Max(1, (int)Math.Round(size.Width * scale));
+        var heightPx = Math.Max(1, (int)Math.Round(size.Height * scale));
         var taskbarWidth = taskbarRect.Right - taskbarRect.Left;
         var taskbarHeight = taskbarRect.Bottom - taskbarRect.Top;
         int x;
         int y;
-        if (taskbarWidth >= taskbarHeight)
+        var customPosition = _coordinator.State.IslandPositionPreset == IslandPositionPreset.Custom;
+        if (customPosition)
         {
-            // Prefer the far-left taskbar area; when Widgets is visible, sit directly after it.
+            x = taskbarRect.Left + (int)Math.Round(_coordinator.State.IslandCustomLeftDip * scale);
+            y = taskbarRect.Top + (int)Math.Round(_coordinator.State.IslandCustomTopDip * scale);
+            ClampToVirtualScreen(ref x, ref y, widthPx, heightPx);
+        }
+        else if (taskbarWidth >= taskbarHeight)
+        {
             var margin = Math.Max(1, (int)Math.Round(6 * scale));
-            x = _embedder.GetPreferredFloatingLeft(taskbar, taskbarRect.Left + margin, margin);
-            x = Math.Min(x, taskbarRect.Right - widthPx - margin);
+            x = _coordinator.State.IslandPositionPreset switch
+            {
+                IslandPositionPreset.Center => taskbarRect.Left + Math.Max(0, (taskbarWidth - widthPx) / 2),
+                IslandPositionPreset.Right => taskbarRect.Right - widthPx - (int)Math.Round(190 * scale),
+                _ => _embedder.GetPreferredFloatingLeft(taskbar, taskbarRect.Left + margin, margin)
+            };
+            x = Math.Clamp(x, taskbarRect.Left + margin, taskbarRect.Right - widthPx - margin);
             y = taskbarRect.Top + Math.Max(0, (taskbarHeight - heightPx) / 2);
         }
         else
         {
             x = taskbarRect.Left + Math.Max(0, (taskbarWidth - widthPx) / 2);
-            y = taskbarRect.Bottom - heightPx - (int)Math.Round(190 * scale);
-            y = Math.Max(taskbarRect.Top + (int)Math.Round(8 * scale), y);
+            var margin = Math.Max(1, (int)Math.Round(6 * scale));
+            y = _coordinator.State.IslandPositionPreset switch
+            {
+                IslandPositionPreset.Left => taskbarRect.Top + (int)Math.Round(80 * scale),
+                IslandPositionPreset.Center => taskbarRect.Top + Math.Max(0, (taskbarHeight - heightPx) / 2),
+                _ => taskbarRect.Bottom - heightPx - (int)Math.Round(190 * scale)
+            };
+            y = Math.Clamp(y, taskbarRect.Top + margin, taskbarRect.Bottom - heightPx - margin);
         }
 
         var target = new Rect { Left = x, Top = y, Right = x + widthPx, Bottom = y + heightPx };
@@ -285,6 +458,21 @@ public partial class TaskbarIslandWindow : Window
         SetWindowPos(handle, taskbarPresented ? HwndTopMost : HwndBottom,
             x, y, widthPx, heightPx, SwpNoActivate | SwpShowWindow);
         _lastFloatingPlacement = placement;
+    }
+
+    private static void ClampToVirtualScreen(ref int x, ref int y, int width, int height)
+    {
+        const int smXVirtualScreen = 76;
+        const int smYVirtualScreen = 77;
+        const int smCxVirtualScreen = 78;
+        const int smCyVirtualScreen = 79;
+        var virtualLeft = GetSystemMetrics(smXVirtualScreen);
+        var virtualTop = GetSystemMetrics(smYVirtualScreen);
+        var virtualRight = virtualLeft + GetSystemMetrics(smCxVirtualScreen);
+        var virtualBottom = virtualTop + GetSystemMetrics(smCyVirtualScreen);
+        var visible = Math.Min(24, Math.Min(width, height));
+        x = Math.Clamp(x, virtualLeft - width + visible, virtualRight - visible);
+        y = Math.Clamp(y, virtualTop - height + visible, virtualBottom - visible);
     }
 
     private static bool IsTaskbarPresented(IntPtr taskbar, Rect overlayTarget, IntPtr overlayWindow)
@@ -386,6 +574,9 @@ public partial class TaskbarIslandWindow : Window
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr window);
+
+    [DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int index);
 
     [DllImport("user32.dll")]
     private static extern IntPtr WindowFromPoint(Point point);

@@ -12,8 +12,11 @@ public partial class MainWindow : Window
     private readonly BalanceCoordinator _coordinator;
     private readonly bool _isWindows11;
     private bool _updatingIslandMode;
+    private bool _updatingIslandLayout;
     public event EventHandler<bool>? IslandVisibilityRequested;
     public event EventHandler<IslandDisplayMode>? IslandDisplayModeRequested;
+    public event EventHandler<IslandLayoutRequest>? IslandLayoutRequested;
+    public event EventHandler<bool>? IslandEditModeRequested;
 
     public MainWindow(BalanceCoordinator coordinator)
     {
@@ -38,9 +41,32 @@ public partial class MainWindow : Window
             IslandModeSelectorColumn.Width = new GridLength(12);
         }
         IslandModeBox.SelectionChanged += IslandModeBox_SelectionChanged;
-        _coordinator.StateChanged += (_, _) => Dispatcher.Invoke(RefreshRows);
+        IslandPositionBox.ItemsSource = new[]
+        {
+            new IslandPositionChoice(IslandPositionPreset.Left, "左侧（Widgets 后）"),
+            new IslandPositionChoice(IslandPositionPreset.Center, "任务栏居中"),
+            new IslandPositionChoice(IslandPositionPreset.Right, "右侧（托盘前）"),
+            new IslandPositionChoice(IslandPositionPreset.Custom, "自定义")
+        };
+        IslandSizeBox.ItemsSource = new[]
+        {
+            new IslandSizeChoice(IslandSizePreset.Compact, "紧凑"),
+            new IslandSizeChoice(IslandSizePreset.Standard, "标准"),
+            new IslandSizeChoice(IslandSizePreset.Large, "大号"),
+            new IslandSizeChoice(IslandSizePreset.Custom, "自定义")
+        };
+        _coordinator.StateChanged += (_, _) => Dispatcher.Invoke(() =>
+        {
+            RefreshRows();
+            UpdateIslandLayoutControls(
+                _coordinator.State.IslandPositionPreset,
+                _coordinator.State.IslandSizePreset);
+        });
         RefreshRows();
         UpdateIslandControls(_coordinator.State.IslandEnabled, _coordinator.State.IslandDisplayMode);
+        UpdateIslandLayoutControls(
+            _coordinator.State.IslandPositionPreset,
+            _coordinator.State.IslandSizePreset);
     }
 
     private async void AddAccount_Click(object sender, RoutedEventArgs e)
@@ -132,10 +158,37 @@ public partial class MainWindow : Window
 
     public void UpdateIslandModeStatus(string status) => IslandModeStatus.Text = status;
 
+    public void UpdateIslandLayoutControls(IslandPositionPreset position, IslandSizePreset size)
+    {
+        _updatingIslandLayout = true;
+        IslandPositionBox.SelectedValue = position;
+        IslandSizeBox.SelectedValue = size;
+        _updatingIslandLayout = false;
+    }
+
     private void IslandModeBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
         if (_updatingIslandMode || IslandModeBox.SelectedValue is not IslandDisplayMode mode) return;
         IslandDisplayModeRequested?.Invoke(this, mode);
+    }
+
+    private void IslandPositionBox_SelectionChanged(
+        object sender, System.Windows.Controls.SelectionChangedEventArgs e) => RequestIslandLayout();
+
+    private void IslandSizeBox_SelectionChanged(
+        object sender, System.Windows.Controls.SelectionChangedEventArgs e) => RequestIslandLayout();
+
+    private void RequestIslandLayout()
+    {
+        if (_updatingIslandLayout ||
+            IslandPositionBox.SelectedValue is not IslandPositionPreset position ||
+            IslandSizeBox.SelectedValue is not IslandSizePreset size) return;
+        IslandLayoutRequested?.Invoke(this, new IslandLayoutRequest(position, size));
+    }
+
+    private void IslandEditBox_Changed(object sender, RoutedEventArgs e)
+    {
+        IslandEditModeRequested?.Invoke(this, IslandEditBox.IsChecked == true);
     }
 
     private void RefreshRows()
@@ -176,5 +229,8 @@ public partial class MainWindow : Window
 
 public sealed record ProviderChoice(Provider Value, string Display);
 public sealed record IslandModeChoice(IslandDisplayMode Value, string Display);
+public sealed record IslandPositionChoice(IslandPositionPreset Value, string Display);
+public sealed record IslandSizeChoice(IslandSizePreset Value, string Display);
+public sealed record IslandLayoutRequest(IslandPositionPreset Position, IslandSizePreset Size);
 public sealed record AccountRow(
     string Id, string Provider, string Label, string Primary, string Secondary, string Updated);

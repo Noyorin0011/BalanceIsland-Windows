@@ -14,7 +14,7 @@
 
         <StackPanel Grid.Row="0" Margin="0,0,0,18">
             <TextBlock Text="Balance Island" FontSize="28" FontWeight="SemiBold" />
-            <TextBlock Text="Windows 任务栏 AI API 余额监控 · v0.1.5"
+            <TextBlock Text="Windows 任务栏 AI API 余额监控 · v0.1.6"
                        Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0" />
         </StackPanel>
 
@@ -57,18 +57,37 @@
         <Border Grid.Row="2" Background="{DynamicResource CardBackground}" CornerRadius="10"
                 Padding="12,8" Margin="0,0,0,16">
             <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition x:Name="IslandModeSelectorColumn" Width="190" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <TextBlock x:Name="IslandModeLabel" Grid.Column="0" Text="浮岛显示模式"
-                           VerticalAlignment="Center" />
-                <ComboBox x:Name="IslandModeBox" Grid.Column="1" Margin="12,0,12,0"
-                          DisplayMemberPath="Display" SelectedValuePath="Value" />
-                <TextBlock x:Name="IslandModeStatus" Grid.Column="2" VerticalAlignment="Center"
-                           Foreground="{DynamicResource SecondaryText}"
-                           Text="悬浮在任务栏上方" TextTrimming="CharacterEllipsis" />
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition x:Name="IslandModeSelectorColumn" Width="190" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="IslandModeLabel" Grid.Column="0" Text="浮岛显示模式"
+                               VerticalAlignment="Center" />
+                    <ComboBox x:Name="IslandModeBox" Grid.Column="1" Margin="12,0,12,0"
+                              DisplayMemberPath="Display" SelectedValuePath="Value" />
+                    <TextBlock x:Name="IslandModeStatus" Grid.Column="2" VerticalAlignment="Center"
+                               Foreground="{DynamicResource SecondaryText}"
+                               Text="悬浮在任务栏上方" TextTrimming="CharacterEllipsis" />
+                </Grid>
+                <WrapPanel Grid.Row="1" Margin="0,8,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="位置" VerticalAlignment="Center" />
+                    <ComboBox x:Name="IslandPositionBox" Width="150" Margin="8,0,16,0"
+                              DisplayMemberPath="Display" SelectedValuePath="Value"
+                              SelectionChanged="IslandPositionBox_SelectionChanged" />
+                    <TextBlock Text="大小" VerticalAlignment="Center" />
+                    <ComboBox x:Name="IslandSizeBox" Width="120" Margin="8,0,16,0"
+                              DisplayMemberPath="Display" SelectedValuePath="Value"
+                              SelectionChanged="IslandSizeBox_SelectionChanged" />
+                    <CheckBox x:Name="IslandEditBox" Content="编辑浮岛（开启可拖动/缩放，关闭后鼠标穿透）"
+                              VerticalAlignment="Center" Checked="IslandEditBox_Changed"
+                              Unchecked="IslandEditBox_Changed" />
+                </WrapPanel>
             </Grid>
         </Border>
 

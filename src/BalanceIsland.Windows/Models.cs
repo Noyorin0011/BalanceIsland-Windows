@@ -45,6 +45,22 @@ public enum IslandDisplayMode
     WidgetsButtonOverlay
 }
 
+public enum IslandPositionPreset
+{
+    Left,
+    Center,
+    Right,
+    Custom
+}
+
+public enum IslandSizePreset
+{
+    Compact,
+    Standard,
+    Large,
+    Custom
+}
+
 public static class ProviderInfo
 {
     public static string DisplayName(this Provider value) => value switch
@@ -184,6 +200,14 @@ public sealed class AppState
     public bool IslandEnabled { get; set; } = true;
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public IslandDisplayMode IslandDisplayMode { get; set; } = IslandDisplayMode.Floating;
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public IslandPositionPreset IslandPositionPreset { get; set; } = IslandPositionPreset.Left;
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public IslandSizePreset IslandSizePreset { get; set; } = IslandSizePreset.Standard;
+    public double IslandCustomLeftDip { get; set; }
+    public double IslandCustomTopDip { get; set; }
+    public double IslandCustomWidthDip { get; set; } = 225;
+    public double IslandCustomHeightDip { get; set; } = 38;
 }
 
 public sealed record ApiCredential(Account Account, string ApiKey);
