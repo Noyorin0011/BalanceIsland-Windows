@@ -25,7 +25,8 @@ public partial class MainWindow : Window
         IslandModeBox.ItemsSource = new[]
         {
             new IslandModeChoice(IslandDisplayMode.Floating, "悬浮窗"),
-            new IslandModeChoice(IslandDisplayMode.TaskbarEmbedded, "任务栏组件（兼容）")
+            new IslandModeChoice(IslandDisplayMode.TaskbarEmbedded, "任务栏组件（兼容）"),
+            new IslandModeChoice(IslandDisplayMode.WidgetsButtonOverlay, "Widgets 按钮覆盖")
         };
         IslandModeBox.SelectionChanged += IslandModeBox_SelectionChanged;
         _coordinator.StateChanged += (_, _) => Dispatcher.Invoke(RefreshRows);
@@ -114,6 +115,7 @@ public partial class MainWindow : Window
         IslandModeStatus.Text = status ?? mode switch
         {
             IslandDisplayMode.TaskbarEmbedded => "挂载到 Explorer 任务栏；不可用时自动回退悬浮",
+            IslandDisplayMode.WidgetsButtonOverlay => "覆盖 Windows 11 左侧 Widgets 按钮；不可用时回退兼容模式",
             _ => "悬浮在任务栏上方"
         };
     }

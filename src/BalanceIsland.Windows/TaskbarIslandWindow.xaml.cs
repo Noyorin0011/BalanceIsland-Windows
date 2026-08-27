@@ -27,6 +27,7 @@ public partial class TaskbarIslandWindow : Window
     private IslandDisplayMode _displayMode;
     private uint _taskbarCreatedMessage;
     private string _lastModeStatus = "";
+    private bool _widgetsVisual;
     private int _index;
 
     public event EventHandler<string>? DisplayModeStatusChanged;
@@ -86,6 +87,7 @@ public partial class TaskbarIslandWindow : Window
 
     public void SetDisplayMode(IslandDisplayMode mode)
     {
+        if (_displayMode != mode) _embedder.Detach();
         _displayMode = mode;
         ApplyDisplayMode();
     }
@@ -117,19 +119,30 @@ public partial class TaskbarIslandWindow : Window
         if (snapshots.Count == 0)
         {
             IslandText.Text = "Balance Island · 请添加账户";
+            WidgetsPrimaryText.Text = "Balance Island";
+            WidgetsSecondaryText.Text = "请添加账户";
             IslandText.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "PrimaryText");
+            WidgetsPrimaryText.SetResourceReference(
+                System.Windows.Controls.TextBlock.ForegroundProperty, "PrimaryText");
             return;
         }
         if (_index >= snapshots.Count) _index = 0;
         var snapshot = snapshots[_index];
         IslandText.Text = snapshot.IslandText;
-        IslandText.Foreground = snapshot.Status switch
+        WidgetsPrimaryText.Text = $"{snapshot.Provider.DisplayName()}  {snapshot.PrimaryText}";
+        var today = snapshot.TodayUsedAmount is null
+            ? ""
+            : $" · 今日 {BalanceSnapshot.CurrencySymbol(snapshot.CurrencyCode)}{snapshot.TodayUsedAmount:0.00}";
+        WidgetsSecondaryText.Text = $"{snapshot.AccountDisplayLabel}{today}";
+        var foreground = snapshot.Status switch
         {
             SnapshotStatus.Critical => new SolidColorBrush(MediaColor.FromRgb(255, 105, 105)),
             SnapshotStatus.Warning => new SolidColorBrush(MediaColor.FromRgb(255, 190, 92)),
             SnapshotStatus.Error => new SolidColorBrush(MediaColor.FromRgb(255, 125, 125)),
             _ => (MediaBrush)FindResource("PrimaryText")
         };
+        IslandText.Foreground = foreground;
+        WidgetsPrimaryText.Foreground = foreground;
     }
 
     private void ApplyDisplayMode()
@@ -138,6 +151,32 @@ public partial class TaskbarIslandWindow : Window
         var handle = new WindowInteropHelper(this).Handle;
         if (handle == IntPtr.Zero || !IsWindow(handle)) return;
 
+        if (_displayMode == IslandDisplayMode.WidgetsButtonOverlay)
+        {
+            var overlayResult = _embedder.OverlayWidgetsButton(handle);
+            if (overlayResult.Success)
+            {
+                SetWidgetsVisual(true);
+                ReportModeStatus(overlayResult.Message);
+                return;
+            }
+
+            SetWidgetsVisual(false);
+            var fallbackResult = _embedder.AttachOrUpdate(handle, FloatingWidth, FloatingHeight);
+            if (fallbackResult.Success)
+            {
+                ReportModeStatus($"{overlayResult.Message}；{fallbackResult.Message}");
+                return;
+            }
+
+            _embedder.Detach();
+            Topmost = true;
+            PositionFloatingOverTaskbar();
+            ReportModeStatus(overlayResult.Message);
+            return;
+        }
+
+        SetWidgetsVisual(false);
         if (_displayMode == IslandDisplayMode.TaskbarEmbedded)
         {
             var result = _embedder.AttachOrUpdate(handle, FloatingWidth, FloatingHeight);
@@ -162,6 +201,22 @@ public partial class TaskbarIslandWindow : Window
         Topmost = true;
         PositionFloatingOverTaskbar();
         ReportModeStatus("悬浮在任务栏上方");
+    }
+
+    private void SetWidgetsVisual(bool enabled)
+    {
+        if (_widgetsVisual == enabled) return;
+        _widgetsVisual = enabled;
+        IslandText.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
+        WidgetsTextPanel.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+        IslandBorder.BorderThickness = enabled ? new Thickness(0) : new Thickness(1);
+        IslandBorder.Padding = enabled ? new Thickness(10, 3) : new Thickness(7, 1);
+        IslandBorder.CornerRadius = new CornerRadius(enabled ? 6 : 5);
+        if (!enabled)
+        {
+            Width = FloatingWidth;
+            Height = FloatingHeight;
+        }
     }
 
     private void ReportModeStatus(string status)

@@ -41,7 +41,8 @@ public enum AnomalyMode
 public enum IslandDisplayMode
 {
     Floating,
-    TaskbarEmbedded
+    TaskbarEmbedded,
+    WidgetsButtonOverlay
 }
 
 public static class ProviderInfo
@@ -192,6 +193,4 @@ public sealed class ProviderApiException(
     int? statusCode = null,
     TimeSpan? retryAfter = null) : Exception(message)
 {
-    public int? StatusCode { get; } = statusCode;
-    public TimeSpan? RetryAfter { get; } = retryAfter;
-}
+    public int? StatusCode { get; }

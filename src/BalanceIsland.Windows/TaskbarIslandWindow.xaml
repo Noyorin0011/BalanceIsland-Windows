@@ -8,8 +8,18 @@
             BorderBrush="{DynamicResource ControlBorder}" BorderThickness="1" Padding="7,1"
             MouseLeftButtonUp="Island_LeftClick" MouseRightButtonUp="Island_RightClick"
             ToolTip="单击切换账户；右键打开设置">
-        <TextBlock x:Name="IslandText" Foreground="{DynamicResource PrimaryText}" FontFamily="Segoe UI"
-                   FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
-                   TextTrimming="CharacterEllipsis" Text="Balance Island" />
+        <Grid>
+            <TextBlock x:Name="IslandText" Foreground="{DynamicResource PrimaryText}" FontFamily="Segoe UI"
+                       FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis" Text="Balance Island" />
+            <StackPanel x:Name="WidgetsTextPanel" Visibility="Collapsed" VerticalAlignment="Center">
+                <TextBlock x:Name="WidgetsPrimaryText" Foreground="{DynamicResource PrimaryText}"
+                           FontFamily="Segoe UI" FontSize="12" FontWeight="SemiBold"
+                           TextTrimming="CharacterEllipsis" Text="Balance Island" />
+                <TextBlock x:Name="WidgetsSecondaryText" Foreground="{DynamicResource SecondaryText}"
+                           FontFamily="Segoe UI" FontSize="11" TextTrimming="CharacterEllipsis"
+                           Text="请添加账户" />
+            </StackPanel>
+        </Grid>
     </Border>
 </Window>

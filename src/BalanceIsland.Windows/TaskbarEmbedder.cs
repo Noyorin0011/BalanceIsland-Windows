@@ -31,6 +31,7 @@ public sealed class TaskbarEmbedder
     private const int MinimumWidthDip = 120;
     private static readonly IntPtr HwndTopMost = new(-1);
     private static readonly IntPtr HwndNoTopMost = new(-2);
+    private static readonly IntPtr HwndBottom = new(1);
     private const string TaskbarAlignmentKey =
         @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced";
 
@@ -50,6 +51,39 @@ public sealed class TaskbarEmbedder
     public bool IsAttached => _window != IntPtr.Zero && IsWindow(_window) &&
                               _taskbar != IntPtr.Zero && IsWindow(_taskbar) &&
                               (_compatibilityOverlay || GetParent(_window) == _taskbar);
+
+    public TaskbarAttachResult OverlayWidgetsButton(IntPtr window)
+    {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
+            return TaskbarAttachResult.Failed("Widgets 按钮覆盖仅支持 Windows 11");
+        if (window == IntPtr.Zero || !IsWindow(window))
+            return TaskbarAttachResult.Failed("浮岛窗口尚未就绪");
+
+        var taskbar = FindWindow("Shell_TrayWnd", null);
+        if (taskbar == IntPtr.Zero || !GetWindowRect(taskbar, out var taskbarRect))
+            return TaskbarAttachResult.Failed("Explorer 任务栏尚未就绪");
+        if (taskbarRect.Right - taskbarRect.Left <= taskbarRect.Bottom - taskbarRect.Top)
+            return TaskbarAttachResult.Failed("Widgets 按钮覆盖当前仅支持横向任务栏");
+
+        var geometry = ReadGeometryCached(taskbar, taskbarRect);
+        var bounds = geometry.WidgetsBounds.Intersect(taskbarRect);
+        if (!bounds.IsValid)
+            return TaskbarAttachResult.Failed("未找到 Windows Widgets 按钮，已回退任务栏兼容模式");
+
+        var dpi = GetDpiForWindow(taskbar);
+        if (dpi == 0) dpi = 96;
+        CaptureStyles(window);
+        return PlaceTopLevelOverlay(
+            window,
+            taskbar,
+            bounds.Left,
+            bounds.Top,
+            bounds.Right - bounds.Left,
+            bounds.Bottom - bounds.Top,
+            dpi,
+            OverlayKind.WidgetsButton,
+            "已覆盖左侧 Widgets 按钮");
+    }
 
     public TaskbarAttachResult AttachOrUpdate(IntPtr window, double desiredWidthDip, double desiredHeightDip)
     {
@@ -122,7 +156,8 @@ public sealed class TaskbarEmbedder
                 window, taskbar, xScreen, yScreen, width, height, centered, dpi);
         }
 
-        var placement = new WindowPlacement(taskbar, x, y, width, height, false);
+        var placement = new WindowPlacement(
+            taskbar, x, y, width, height, OverlayKind.Embedded, true);
         var placementLabel = centered ? "任务栏左侧" : "通知区域左侧";
         var host = popupParented ? "layered popup host" : "child host";
         var label = $"已嵌入{placementLabel}（{host}）";
@@ -205,16 +240,41 @@ public sealed class TaskbarEmbedder
         bool centered,
         uint dpi)
     {
-        // TrafficMonitor-style fallback: keep a no-activate top-level window visually inside
-        // the taskbar. Explorer builds that reject cross-process parenting still get a visible,
-        // independently rendered surface and can rebuild the taskbar without taking us down.
-        var placement = new WindowPlacement(taskbar, x, y, width, height, true);
         var placementLabel = centered ? "任务栏左侧" : "通知区域左侧";
-        var label = $"已显示于{placementLabel}（TrafficMonitor 兼容模式）";
+        return PlaceTopLevelOverlay(
+            window,
+            taskbar,
+            x,
+            y,
+            width,
+            height,
+            dpi,
+            OverlayKind.Compatibility,
+            $"已显示于{placementLabel}（TrafficMonitor 兼容模式）");
+    }
+
+    private TaskbarAttachResult PlaceTopLevelOverlay(
+        IntPtr window,
+        IntPtr taskbar,
+        int x,
+        int y,
+        int width,
+        int height,
+        uint dpi,
+        OverlayKind kind,
+        string label)
+    {
+        // This remains an independent no-activate layered window. Its z-order follows whether
+        // the taskbar is actually exposed, so it cannot float over an exclusive full-screen app.
+        var target = new NativeRect { Left = x, Top = y, Right = x + width, Bottom = y + height };
+        var taskbarPresented = IsTaskbarPresented(taskbar, target, window);
+        var placement = new WindowPlacement(
+            taskbar, x, y, width, height, kind, taskbarPresented);
+        var status = taskbarPresented ? label : $"{label}（任务栏当前被前台窗口遮挡）";
         if (_compatibilityOverlay && _window == window && _taskbar == taskbar &&
             GetParent(window) == IntPtr.Zero && _lastPlacement == placement && IsSurfaceVisible(window))
         {
-            return TaskbarAttachResult.Succeeded(label, width * 96d / dpi);
+            return TaskbarAttachResult.Succeeded(status, width * 96d / dpi);
         }
 
         var parentChanged = GetParent(window) != IntPtr.Zero;
@@ -234,7 +294,8 @@ public sealed class TaskbarEmbedder
         var positionFlags = SwpNoActivate;
         if (styleChanged || parentChanged) positionFlags |= SwpFrameChanged;
         if (!wasVisible) positionFlags |= SwpShowWindow;
-        if (!SetWindowPos(window, HwndTopMost, x, y, width, height,
+        var insertAfter = taskbarPresented ? HwndTopMost : HwndBottom;
+        if (!SetWindowPos(window, insertAfter, x, y, width, height,
                 positionFlags))
         {
             RestoreWindow(window);
@@ -265,7 +326,7 @@ public sealed class TaskbarEmbedder
         _taskbar = taskbar;
         _compatibilityOverlay = true;
         _lastPlacement = placement;
-        return TaskbarAttachResult.Succeeded(label, width * 96d / dpi);
+        return TaskbarAttachResult.Succeeded(status, width * 96d / dpi);
     }
 
     public void Detach()
@@ -306,6 +367,28 @@ public sealed class TaskbarEmbedder
                cloaked == 0;
     }
 
+    private static bool IsTaskbarPresented(IntPtr taskbar, NativeRect overlayTarget, IntPtr overlayWindow)
+    {
+        if (!IsWindowVisible(taskbar) ||
+            DwmGetWindowAttribute(taskbar, DwmwaCloaked, out var cloaked, sizeof(int)) == 0 && cloaked != 0 ||
+            !GetWindowRect(taskbar, out var rectangle) || !rectangle.IsValid)
+            return false;
+
+        var width = rectangle.Right - rectangle.Left;
+        var height = rectangle.Bottom - rectangle.Top;
+        var y = rectangle.Top + Math.Max(0, height / 2);
+        var samples = new[] { 0.12, 0.35, 0.58, 0.78, 0.94 };
+        foreach (var fraction in samples)
+        {
+            var x = rectangle.Left + Math.Clamp((int)Math.Round(width * fraction), 1, width - 1);
+            if (overlayTarget.Contains(x, y)) continue;
+            var hit = WindowFromPoint(new NativePoint { X = x, Y = y });
+            if (hit == IntPtr.Zero || hit == overlayWindow || IsChild(overlayWindow, hit)) continue;
+            if (hit == taskbar || IsChild(taskbar, hit)) return true;
+        }
+        return false;
+    }
+
     private static bool IsCenteredTaskbar(Span startButton, NativeRect taskbarRect)
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000)) return false;
@@ -323,7 +406,7 @@ public sealed class TaskbarEmbedder
     private TaskbarGeometry ReadGeometryCached(IntPtr taskbar, NativeRect taskbarRect)
     {
         var now = DateTime.UtcNow;
-        if (_geometryTaskbar == taskbar && now - _lastGeometryRead < TimeSpan.FromSeconds(2))
+        if (_geometryTaskbar == taskbar && now - _lastGeometryRead < TimeSpan.FromSeconds(5))
             return _cachedGeometry;
 
         _geometryTaskbar = taskbar;
@@ -336,11 +419,11 @@ public sealed class TaskbarEmbedder
     {
         try
         {
-            GetWindowThreadProcessId(taskbar, out var taskbarProcessId);
             var root = AutomationElement.FromHandle(taskbar);
             var elements = root.FindAll(TreeScope.Descendants, Condition.TrueCondition);
             var start = Span.Invalid;
             var widgets = Span.Invalid;
+            var widgetsBounds = NativeRect.Invalid;
             var notification = Span.Invalid;
             var buttons = new List<Span>();
 
@@ -349,7 +432,7 @@ public sealed class TaskbarEmbedder
                 try
                 {
                     var current = element.Current;
-                    if (current.ProcessId != taskbarProcessId || current.IsOffscreen) continue;
+                    if (current.IsOffscreen) continue;
                     var rectangle = current.BoundingRectangle;
                     if (rectangle.IsEmpty || rectangle.Right <= taskbarRect.Left ||
                         rectangle.Left >= taskbarRect.Right || rectangle.Bottom <= taskbarRect.Top ||
@@ -358,7 +441,17 @@ public sealed class TaskbarEmbedder
                     var span = new Span((int)Math.Floor(rectangle.Left), (int)Math.Ceiling(rectangle.Right));
                     var automationId = current.AutomationId;
                     if (automationId == "StartButton") start = span;
-                    else if (automationId == "WidgetsButton") widgets = span;
+                    else if (automationId == "WidgetsButton")
+                    {
+                        widgets = span;
+                        widgetsBounds = new NativeRect
+                        {
+                            Left = (int)Math.Floor(rectangle.Left),
+                            Top = (int)Math.Floor(rectangle.Top),
+                            Right = (int)Math.Ceiling(rectangle.Right),
+                            Bottom = (int)Math.Ceiling(rectangle.Bottom)
+                        };
+                    }
                     else if (automationId is "SystemTrayIcon" or "NotifyItemIcon")
                         notification = notification.Union(span);
                     else if (current.ControlType == ControlType.Button) buttons.Add(span);
@@ -368,7 +461,7 @@ public sealed class TaskbarEmbedder
             }
 
             var taskButtons = ResolveContiguousButtons(start, buttons);
-            return new TaskbarGeometry(start, widgets, taskButtons, notification);
+            return new TaskbarGeometry(start, widgets, widgetsBounds, taskButtons, notification);
         }
         catch
         {
@@ -414,13 +507,31 @@ public sealed class TaskbarEmbedder
     }
 
     private readonly record struct TaskbarGeometry(
-        Span StartButton, Span WidgetsButton, Span TaskButtons, Span NotificationArea)
+        Span StartButton,
+        Span WidgetsButton,
+        NativeRect WidgetsBounds,
+        Span TaskButtons,
+        Span NotificationArea)
     {
-        public static TaskbarGeometry Empty => new(Span.Invalid, Span.Invalid, Span.Invalid, Span.Invalid);
+        public static TaskbarGeometry Empty => new(
+            Span.Invalid, Span.Invalid, NativeRect.Invalid, Span.Invalid, Span.Invalid);
     }
 
     private readonly record struct WindowPlacement(
-        IntPtr Taskbar, int X, int Y, int Width, int Height, bool CompatibilityOverlay);
+        IntPtr Taskbar,
+        int X,
+        int Y,
+        int Width,
+        int Height,
+        OverlayKind Kind,
+        bool TaskbarPresented);
+
+    private enum OverlayKind
+    {
+        Embedded,
+        Compatibility,
+        WidgetsButton
+    }
 
     private readonly record struct Span(int Left, int Right)
     {
@@ -437,6 +548,24 @@ public sealed class TaskbarEmbedder
         public int Top;
         public int Right;
         public int Bottom;
+
+        public bool IsValid => Right > Left && Bottom > Top;
+        public static NativeRect Invalid => new();
+        public bool Contains(int x, int y) => x >= Left && x < Right && y >= Top && y < Bottom;
+        public NativeRect Intersect(NativeRect other) => new()
+        {
+            Left = Math.Max(Left, other.Left),
+            Top = Math.Max(Top, other.Top),
+            Right = Math.Min(Right, other.Right),
+            Bottom = Math.Min(Bottom, other.Bottom)
+        };
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
     }
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
@@ -461,14 +590,18 @@ public sealed class TaskbarEmbedder
     private static extern bool IsWindowVisible(IntPtr window);
 
     [DllImport("user32.dll")]
+    private static extern IntPtr WindowFromPoint(NativePoint point);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsChild(IntPtr parent, IntPtr window);
+
+    [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetWindowRect(IntPtr window, out NativeRect rectangle);
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr window);
-
-    [DllImport("user32.dll")]
-    private static extern uint GetWindowThreadProcessId(IntPtr window, out int processId);
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
     private static extern IntPtr GetWindowLongPtr(IntPtr window, int index);
