@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>BalanceIsland</AssemblyName>
+    <RootNamespace>BalanceIsland.Windows</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon />
+    <Version>0.1.0</Version>
+    <Authors>Noyorin0011</Authors>
+    <Description>Windows taskbar island for AI API balances and usage.</Description>
+  </PropertyGroup>
+</Project>
