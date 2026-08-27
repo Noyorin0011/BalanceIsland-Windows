@@ -15,12 +15,18 @@ public sealed class TaskbarEmbedder
     private const long WsChild = 0x40000000L;
     private const long WsPopup = 0x80000000L;
     private const long WsClipSiblings = 0x04000000L;
+    private const long WsExLayered = 0x00080000L;
     private const long WsExToolWindow = 0x00000080L;
     private const long WsExNoActivate = 0x08000000L;
     private const uint SwpNoActivate = 0x0010;
     private const uint SwpFrameChanged = 0x0020;
     private const uint SwpShowWindow = 0x0040;
     private const int SwShowNoActivate = 4;
+    private const uint RdwInvalidate = 0x0001;
+    private const uint RdwFrame = 0x0400;
+    private const uint RdwAllChildren = 0x0080;
+    private const uint RdwUpdateNow = 0x0100;
+    private const int DwmwaCloaked = 14;
     private const int Gap = 6;
     private const int MinimumWidthDip = 120;
     private const string TaskbarAlignmentKey =
@@ -95,10 +101,15 @@ public sealed class TaskbarEmbedder
         var y = Math.Max(0, (taskbarHeight - height) / 2);
 
         CaptureStyles(window);
+        var popupParented = OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
         var style = GetWindowLongPtr(window, GwlStyle).ToInt64();
-        SetWindowLongPtr(window, GwlStyle, new IntPtr((style & ~WsPopup) | WsChild | WsClipSiblings));
+        var hostedStyle = popupParented
+            ? (style & ~WsChild) | WsPopup
+            : (style & ~WsPopup) | WsChild | WsClipSiblings;
+        SetWindowLongPtr(window, GwlStyle, new IntPtr(hostedStyle));
         var exStyle = GetWindowLongPtr(window, GwlExStyle).ToInt64();
-        SetWindowLongPtr(window, GwlExStyle, new IntPtr(exStyle | WsExToolWindow | WsExNoActivate));
+        SetWindowLongPtr(window, GwlExStyle,
+            new IntPtr(exStyle | WsExLayered | WsExToolWindow | WsExNoActivate));
 
         if (GetParent(window) != taskbar)
         {
@@ -119,9 +130,25 @@ public sealed class TaskbarEmbedder
         }
 
         ShowWindow(window, SwShowNoActivate);
+        RedrawWindow(window, IntPtr.Zero, IntPtr.Zero,
+            RdwInvalidate | RdwFrame | RdwAllChildren | RdwUpdateNow);
+        DwmFlush();
+        if (!IsWindowVisible(window))
+        {
+            RestoreWindow(window);
+            return TaskbarAttachResult.Failed("任务栏宿主窗口未进入可见状态，已回退悬浮模式");
+        }
+        if (DwmGetWindowAttribute(window, DwmwaCloaked, out var cloaked, sizeof(int)) == 0 && cloaked != 0)
+        {
+            RestoreWindow(window);
+            return TaskbarAttachResult.Failed($"任务栏宿主被 DWM 隐藏（cloak {cloaked}），已回退悬浮模式");
+        }
+
         _window = window;
         _taskbar = taskbar;
-        var label = centered ? "已嵌入任务栏左侧" : "已嵌入通知区域左侧";
+        var placement = centered ? "任务栏左侧" : "通知区域左侧";
+        var host = popupParented ? "layered popup host" : "child host";
+        var label = $"已嵌入{placement}（{host}）";
         return TaskbarAttachResult.Succeeded(label, width * 96d / dpi);
     }
 
@@ -302,6 +329,10 @@ public sealed class TaskbarEmbedder
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(IntPtr window);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetWindowRect(IntPtr window, out NativeRect rectangle);
 
     [DllImport("user32.dll")]
@@ -324,8 +355,20 @@ public sealed class TaskbarEmbedder
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr window, int command);
 
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool RedrawWindow(
+        IntPtr window, IntPtr updateRectangle, IntPtr updateRegion, uint flags);
+
     [DllImport("kernel32.dll")]
     private static extern void SetLastError(uint errorCode);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmFlush();
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(
+        IntPtr window, int attribute, out int attributeValue, int attributeSize);
 }
 
 public sealed record TaskbarAttachResult(bool Success, string Message, double WidthDip)

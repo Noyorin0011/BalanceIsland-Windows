@@ -144,7 +144,6 @@ public partial class TaskbarIslandWindow : Window
             var result = _embedder.AttachOrUpdate(handle, FloatingWidth, FloatingHeight);
             if (result.Success)
             {
-                if (Math.Abs(Width - result.WidthDip) > 0.5) Width = result.WidthDip;
                 ReportModeStatus(result.Message);
                 return;
             }

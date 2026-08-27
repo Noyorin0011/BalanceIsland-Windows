@@ -2,7 +2,7 @@
 
 Windows 任务栏 AI API 余额与用量监控工具。当前仓库是以 Android
 [Balance Island v0.9.2](https://github.com/Noyorin0011/BalanceIsland/releases/tag/v0.9.2)
-为行为基线建立的 Windows 版本；当前应用版本为 `0.1.1`。
+为行为基线建立的 Windows 版本；当前应用版本为 `0.1.2`。
 
 ## 当前功能
 
@@ -11,6 +11,8 @@ Windows 任务栏 AI API 余额与用量监控工具。当前仓库是以 Androi
 - 浮岛支持“悬浮窗”和“任务栏嵌入（实验）”两种模式并持久化选择。
 - 嵌入模式把浮岛 HWND 挂载到 Explorer 任务栏：Windows 11 居中布局位于左侧；
   Windows 11 左对齐和 Windows 10 位于通知区域左侧。
+- Windows 11 保留 WPF layered popup 的独立 DWM surface 再挂载到任务栏，避免传统
+  `WS_CHILD` surface 在 XAML 任务栏中存在但不可见；Windows 10 使用传统 child host。
 - 每 5 秒轮换账户，单击立即切换，右键打开设置。
 - 设置窗口、原生标题栏和任务栏浮岛跟随 Windows 应用深浅色模式，运行中切换主题会立即更新。
 - 同一 Provider 多账户；备注留空时显示 API Key 后四位。

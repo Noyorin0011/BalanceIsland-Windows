@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.1.2
+
+- 修复 Windows 11 选择任务栏嵌入后浮岛完全消失的问题。
+- Windows 11 改用 popup-parented layered surface，让 WPF 浮岛保留独立 DWM 合成层；Windows 10 继续使用 child host。
+- 嵌入后强制刷新 DWM，并检测不可见或 cloaked 状态；检测失败时立即恢复悬浮模式并显示原因。
+
 ## 0.1.1
 
 - 设置窗口现在跟随 Windows 应用深浅色模式，并在系统主题切换后实时更新。
