@@ -1,40 +1,51 @@
 <Window x:Class="BalanceIsland.Windows.TaskbarIslandWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Width="250" Height="44" WindowStyle="None" ResizeMode="NoResize"
+        Width="225" Height="38" WindowStyle="None" ResizeMode="NoResize"
         AllowsTransparency="True" Background="Transparent" ShowInTaskbar="False"
         ShowActivated="False" Topmost="False" UseLayoutRounding="True"
         SnapsToDevicePixels="True" TextOptions.TextFormattingMode="Display">
-    <Grid x:Name="IslandSurface" Background="Transparent" Margin="2"
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="ProviderIcons.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+    <Grid x:Name="IslandSurface" Background="Transparent" Margin="1"
             MouseLeftButtonUp="Island_LeftClick" MouseRightButtonUp="Island_RightClick"
             ToolTip="单击切换账户；右键打开设置">
         <Grid.Effect>
             <DropShadowEffect Color="#D0000000" BlurRadius="2" ShadowDepth="1" Opacity="0.9" />
         </Grid.Effect>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="42" />
+            <ColumnDefinition Width="32" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
-        <Grid Grid.Column="0" Width="32" Height="32" HorizontalAlignment="Center"
-              VerticalAlignment="Center">
-            <Ellipse Stroke="White" StrokeThickness="1.5" Opacity="0.95" />
-            <TextBlock x:Name="ProviderIconText" Text="BI" Foreground="White"
-                       FontFamily="Segoe UI" FontSize="10" FontWeight="Bold"
+        <Border x:Name="ProviderIconBackground" Grid.Column="0" Width="24" Height="24"
+                CornerRadius="7" Background="Transparent" HorizontalAlignment="Center"
+                VerticalAlignment="Center">
+            <Grid>
+                <Image x:Name="ProviderIconImage" Width="20" Height="20" Stretch="Uniform"
                        HorizontalAlignment="Center" VerticalAlignment="Center" />
-        </Grid>
+                <TextBlock x:Name="ProviderIconFallbackText" Text="+" Foreground="#10131A"
+                           FontFamily="Segoe UI" FontSize="11" FontWeight="Bold"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Grid>
+        </Border>
 
-        <Grid Grid.Column="1" Margin="4,1,0,1">
+        <Grid Grid.Column="1" Margin="3,0,0,0">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <TextBlock x:Name="IslandTitleText" Grid.Row="0" Foreground="White"
-                       FontFamily="Segoe UI" FontSize="12" FontWeight="SemiBold"
+                       FontFamily="Segoe UI" FontSize="11" FontWeight="SemiBold"
                        VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                        Text="Balance Island" />
             <TextBlock x:Name="IslandUsageText" Grid.Row="1" Foreground="White" Opacity="0.86"
-                       FontFamily="Segoe UI" FontSize="11" VerticalAlignment="Center"
+                       FontFamily="Segoe UI" FontSize="10" VerticalAlignment="Center"
                        TextTrimming="CharacterEllipsis" Text="请添加账户" />
         </Grid>
     </Grid>

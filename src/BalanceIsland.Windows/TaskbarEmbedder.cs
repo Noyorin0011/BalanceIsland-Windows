@@ -52,6 +52,16 @@ public sealed class TaskbarEmbedder
                               _taskbar != IntPtr.Zero && IsWindow(_taskbar) &&
                               (_compatibilityOverlay || GetParent(_window) == _taskbar);
 
+    public int GetPreferredFloatingLeft(IntPtr taskbar, int fallbackLeft, int gap)
+    {
+        if (taskbar == IntPtr.Zero || !GetWindowRect(taskbar, out var taskbarRect))
+            return fallbackLeft;
+        var geometry = ReadGeometryCached(taskbar, taskbarRect);
+        return geometry.WidgetsButton.IsValid
+            ? Math.Max(fallbackLeft, geometry.WidgetsButton.Right + Math.Max(0, gap))
+            : fallbackLeft;
+    }
+
     public TaskbarAttachResult OverlayWidgetsButton(IntPtr window)
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))

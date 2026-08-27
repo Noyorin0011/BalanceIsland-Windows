@@ -2,19 +2,27 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Threading;
 
 namespace BalanceIsland.Windows;
 
 public partial class TaskbarIslandWindow : Window
 {
-    private const double FloatingWidth = 250;
-    private const double FloatingHeight = 44;
+    private const double FloatingWidth = 225;
+    private const double FloatingHeight = 38;
     private const int GwlExStyle = -20;
     private const long WsExToolWindow = 0x00000080L;
     private const long WsExNoActivate = 0x08000000L;
     private const int WmMouseActivate = 0x0021;
     private const int MaNoActivate = 3;
+    private const uint EventSystemForeground = 0x0003;
+    private const uint EventSystemMinimizeStart = 0x0016;
+    private const uint EventSystemMinimizeEnd = 0x0017;
+    private const uint EventObjectLocationChange = 0x800B;
+    private const int ObjidWindow = 0;
+    private const uint WineventOutOfContext = 0x0000;
+    private const uint WineventSkipOwnProcess = 0x0002;
     private const uint SwpNoActivate = 0x0010;
     private const uint SwpShowWindow = 0x0040;
     private static readonly IntPtr HwndTopMost = new(-1);
@@ -24,10 +32,15 @@ public partial class TaskbarIslandWindow : Window
     private readonly TaskbarEmbedder _embedder = new();
     private readonly DispatcherTimer _carouselTimer;
     private readonly DispatcherTimer _layoutTimer;
+    private readonly DispatcherTimer _eventSettleTimer;
+    private readonly WinEventDelegate _winEventDelegate;
     private IslandDisplayMode _displayMode;
     private uint _taskbarCreatedMessage;
     private string _lastModeStatus = "";
     private FloatingPlacement? _lastFloatingPlacement;
+    private IntPtr _foregroundHook;
+    private IntPtr _minimizeHook;
+    private IntPtr _locationHook;
     private int _index;
 
     public event EventHandler<string>? DisplayModeStatusChanged;
@@ -50,9 +63,16 @@ public partial class TaskbarIslandWindow : Window
         _carouselTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
         _carouselTimer.Tick += (_, _) => Next();
         _carouselTimer.Start();
-        _layoutTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _layoutTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
         _layoutTimer.Tick += (_, _) => ApplyDisplayMode();
         _layoutTimer.Start();
+        _eventSettleTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(80) };
+        _eventSettleTimer.Tick += (_, _) =>
+        {
+            _eventSettleTimer.Stop();
+            ApplyDisplayMode();
+        };
+        _winEventDelegate = OnWinEvent;
         Loaded += (_, _) =>
         {
             ApplyDisplayMode();
@@ -75,12 +95,25 @@ public partial class TaskbarIslandWindow : Window
         var style = GetWindowLongPtr(handle, GwlExStyle).ToInt64();
         SetWindowLongPtr(handle, GwlExStyle,
             new IntPtr(style | WsExToolWindow | WsExNoActivate));
+        _foregroundHook = SetWinEventHook(
+            EventSystemForeground, EventSystemForeground, IntPtr.Zero,
+            _winEventDelegate, 0, 0, WineventOutOfContext | WineventSkipOwnProcess);
+        _minimizeHook = SetWinEventHook(
+            EventSystemMinimizeStart, EventSystemMinimizeEnd, IntPtr.Zero,
+            _winEventDelegate, 0, 0, WineventOutOfContext | WineventSkipOwnProcess);
+        _locationHook = SetWinEventHook(
+            EventObjectLocationChange, EventObjectLocationChange, IntPtr.Zero,
+            _winEventDelegate, 0, 0, WineventOutOfContext | WineventSkipOwnProcess);
     }
 
     protected override void OnClosed(EventArgs e)
     {
         _carouselTimer.Stop();
         _layoutTimer.Stop();
+        _eventSettleTimer.Stop();
+        if (_foregroundHook != IntPtr.Zero) UnhookWinEvent(_foregroundHook);
+        if (_minimizeHook != IntPtr.Zero) UnhookWinEvent(_minimizeHook);
+        if (_locationHook != IntPtr.Zero) UnhookWinEvent(_locationHook);
         _embedder.Detach();
         base.OnClosed(e);
     }
@@ -119,7 +152,11 @@ public partial class TaskbarIslandWindow : Window
         var snapshots = _coordinator.CurrentSnapshots;
         if (snapshots.Count == 0)
         {
-            ProviderIconText.Text = "BI";
+            ProviderIconImage.Source = null;
+            ProviderIconImage.Visibility = Visibility.Collapsed;
+            ProviderIconFallbackText.Visibility = Visibility.Visible;
+            ProviderIconBackground.Background = new SolidColorBrush(Color.FromRgb(255, 190, 70));
+            ProviderIconBackground.Padding = new Thickness(0);
             IslandTitleText.Text = "Balance Island";
             IslandUsageText.Text = "请添加账户";
             return;
@@ -127,7 +164,20 @@ public partial class TaskbarIslandWindow : Window
         if (_index >= snapshots.Count) _index = 0;
         var snapshot = snapshots[_index];
         var provider = snapshot.Provider.DisplayName();
-        ProviderIconText.Text = ProviderAbbreviation(snapshot.Provider);
+        ProviderIconImage.Source = (ImageSource)FindResource($"ProviderIcon.{snapshot.Provider}");
+        ProviderIconImage.Visibility = Visibility.Visible;
+        ProviderIconFallbackText.Visibility = Visibility.Collapsed;
+        ProviderIconBackground.Background = snapshot.Provider switch
+        {
+            Provider.OpenAI or Provider.XAI =>
+                new SolidColorBrush(Color.FromRgb(20, 22, 27)),
+            Provider.Moonshot => Brushes.White,
+            _ => Brushes.Transparent
+        };
+        ProviderIconBackground.Padding = snapshot.Provider is
+            Provider.OpenAI or Provider.XAI or Provider.Moonshot
+                ? new Thickness(2)
+                : new Thickness(0);
         IslandTitleText.Text = $"{provider} · {snapshot.AccountDisplayLabel}";
         var today = snapshot.TodayUsedAmount is null
             ? ""
@@ -137,20 +187,6 @@ public partial class TaskbarIslandWindow : Window
             : today;
         IslandUsageText.Text = $"{snapshot.PrimaryText}{detail}";
     }
-
-    private static string ProviderAbbreviation(Provider provider) => provider switch
-    {
-        Provider.DeepSeek => "DS",
-        Provider.OpenAI => "OA",
-        Provider.OpenRouter => "OR",
-        Provider.SiliconFlow => "SF",
-        Provider.Moonshot => "KM",
-        Provider.MiMo => "MI",
-        Provider.Anthropic => "AN",
-        Provider.Gemini => "GE",
-        Provider.XAI => "xA",
-        _ => "BI"
-    };
 
     private void ApplyDisplayMode()
     {
@@ -224,9 +260,10 @@ public partial class TaskbarIslandWindow : Window
         int y;
         if (taskbarWidth >= taskbarHeight)
         {
-            // Leave the right-most area to the notification icons and clock.
-            x = taskbarRect.Right - widthPx - (int)Math.Round(190 * scale);
-            x = Math.Max(taskbarRect.Left + (int)Math.Round(8 * scale), x);
+            // Prefer the far-left taskbar area; when Widgets is visible, sit directly after it.
+            var margin = Math.Max(1, (int)Math.Round(6 * scale));
+            x = _embedder.GetPreferredFloatingLeft(taskbar, taskbarRect.Left + margin, margin);
+            x = Math.Min(x, taskbarRect.Right - widthPx - margin);
             y = taskbarRect.Top + Math.Max(0, (taskbarHeight - heightPx) / 2);
         }
         else
@@ -263,6 +300,31 @@ public partial class TaskbarIslandWindow : Window
             if (hit == taskbar || IsChild(taskbar, hit)) return true;
         }
         return false;
+    }
+
+    private void OnWinEvent(
+        IntPtr hook,
+        uint eventType,
+        IntPtr window,
+        int objectId,
+        int childId,
+        uint eventThread,
+        uint eventTime)
+    {
+        if (eventType == EventObjectLocationChange)
+        {
+            if (objectId != ObjidWindow) return;
+            var foreground = GetForegroundWindow();
+            var taskbar = FindWindow("Shell_TrayWnd", null);
+            if (window != foreground && window != taskbar) return;
+        }
+
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            ApplyDisplayMode();
+            _eventSettleTimer.Stop();
+            _eventSettleTimer.Start();
+        }), DispatcherPriority.Send);
     }
 
     private IntPtr WindowProc(
@@ -302,6 +364,15 @@ public partial class TaskbarIslandWindow : Window
     private readonly record struct FloatingPlacement(
         int X, int Y, int Width, int Height, bool TaskbarPresented);
 
+    private delegate void WinEventDelegate(
+        IntPtr hook,
+        uint eventType,
+        IntPtr window,
+        int objectId,
+        int childId,
+        uint eventThread,
+        uint eventTime);
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern IntPtr FindWindow(string? className, string? windowName);
 
@@ -314,6 +385,23 @@ public partial class TaskbarIslandWindow : Window
 
     [DllImport("user32.dll")]
     private static extern IntPtr WindowFromPoint(Point point);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetWinEventHook(
+        uint eventMin,
+        uint eventMax,
+        IntPtr eventHookModule,
+        WinEventDelegate callback,
+        uint processId,
+        uint threadId,
+        uint flags);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool UnhookWinEvent(IntPtr hook);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
