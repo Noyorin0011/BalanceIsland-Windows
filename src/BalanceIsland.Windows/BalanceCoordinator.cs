@@ -1,3 +1,5 @@
+using System.Net.Http;
+
 namespace BalanceIsland.Windows;
 
 public sealed class BalanceCoordinator : IDisposable
