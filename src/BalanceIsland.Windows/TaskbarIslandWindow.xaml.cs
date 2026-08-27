@@ -2,8 +2,11 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
-using System.Windows.Media;
 using System.Windows.Threading;
+using MediaBrushes = System.Windows.Media.Brushes;
+using MediaColor = System.Windows.Media.Color;
+using MediaImageSource = System.Windows.Media.ImageSource;
+using MediaSolidColorBrush = System.Windows.Media.SolidColorBrush;
 
 namespace BalanceIsland.Windows;
 
@@ -155,7 +158,8 @@ public partial class TaskbarIslandWindow : Window
             ProviderIconImage.Source = null;
             ProviderIconImage.Visibility = Visibility.Collapsed;
             ProviderIconFallbackText.Visibility = Visibility.Visible;
-            ProviderIconBackground.Background = new SolidColorBrush(Color.FromRgb(255, 190, 70));
+            ProviderIconBackground.Background = new MediaSolidColorBrush(
+                MediaColor.FromRgb(255, 190, 70));
             ProviderIconBackground.Padding = new Thickness(0);
             IslandTitleText.Text = "Balance Island";
             IslandUsageText.Text = "请添加账户";
@@ -164,15 +168,15 @@ public partial class TaskbarIslandWindow : Window
         if (_index >= snapshots.Count) _index = 0;
         var snapshot = snapshots[_index];
         var provider = snapshot.Provider.DisplayName();
-        ProviderIconImage.Source = (ImageSource)FindResource($"ProviderIcon.{snapshot.Provider}");
+        ProviderIconImage.Source = (MediaImageSource)FindResource($"ProviderIcon.{snapshot.Provider}");
         ProviderIconImage.Visibility = Visibility.Visible;
         ProviderIconFallbackText.Visibility = Visibility.Collapsed;
         ProviderIconBackground.Background = snapshot.Provider switch
         {
             Provider.OpenAI or Provider.XAI =>
-                new SolidColorBrush(Color.FromRgb(20, 22, 27)),
-            Provider.Moonshot => Brushes.White,
-            _ => Brushes.Transparent
+                new MediaSolidColorBrush(MediaColor.FromRgb(20, 22, 27)),
+            Provider.Moonshot => MediaBrushes.White,
+            _ => MediaBrushes.Transparent
         };
         ProviderIconBackground.Padding = snapshot.Provider is
             Provider.OpenAI or Provider.XAI or Provider.Moonshot
