@@ -289,6 +289,14 @@ public partial class TaskbarIslandWindow : Window
         if (_index >= snapshots.Count) _index = 0;
         var snapshot = snapshots[_index];
         ProviderIconImage.Source = (MediaImageSource)FindResource($"ProviderIcon.{snapshot.Provider}");
+        var iconSize = snapshot.Provider switch
+        {
+            Provider.MiMo or Provider.Gemini => 16d,
+            Provider.OpenAI or Provider.Moonshot or Provider.XAI => 16.5d,
+            _ => 17d
+        };
+        ProviderIconImage.Width = iconSize;
+        ProviderIconImage.Height = iconSize;
         ProviderIconImage.Visibility = Visibility.Visible;
         ProviderIconFallbackText.Visibility = Visibility.Collapsed;
         ProviderIconBackground.Background = snapshot.Provider switch

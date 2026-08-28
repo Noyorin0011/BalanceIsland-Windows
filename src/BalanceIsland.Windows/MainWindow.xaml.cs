@@ -119,6 +119,59 @@ public partial class MainWindow : Window
         _coordinator.RemoveAccount(row.Id);
     }
 
+    private void AccountsGrid_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
+        UpdateAccountActionButtons();
+
+    private void UpdateAccountActionButtons()
+    {
+        var row = AccountsGrid.SelectedItem as AccountRow;
+        EnableAccountButton.IsEnabled = row is not null;
+        EditAccountButton.IsEnabled = row is not null;
+        DeleteAccountButton.IsEnabled = row is not null;
+        EnableAccountButton.Content = row is null
+            ? "启用/停用"
+            : row.IsEnabled ? "停用" : "启用";
+    }
+
+    private void ToggleSelectedAccount_Click(object sender, RoutedEventArgs e)
+    {
+        if (AccountsGrid.SelectedItem is not AccountRow row) return;
+        _coordinator.SetAccountEnabled(row.Id, !row.IsEnabled);
+        StatusText.Text = row.IsEnabled ? "账户已停用；后台刷新、告警和浮岛显示均已暂停。" : "账户已启用。";
+        if (!row.IsEnabled) _ = _coordinator.RefreshDueAsync(force: true, targetCredentialId: row.Id);
+    }
+
+    private async void EditSelectedAccount_Click(object sender, RoutedEventArgs e)
+    {
+        if (AccountsGrid.SelectedItem is not AccountRow row) return;
+        var account = _coordinator.State.Accounts.FirstOrDefault(item => item.Id == row.Id);
+        if (account is null) return;
+
+        var editor = new AccountEditWindow(account) { Owner = this };
+        (System.Windows.Application.Current as App)?.TrackWindow(editor);
+        if (editor.ShowDialog() != true) return;
+
+        SetBusy("正在保存账户……", true);
+        try
+        {
+            await _coordinator.UpdateAccountAsync(account.Id, editor.AccountLabel, editor.ApiKey,
+                editor.ManualBalance, editor.RefreshMinutes);
+            StatusText.Text = string.IsNullOrWhiteSpace(editor.ApiKey)
+                ? "账户设置已保存；继续使用原 API 凭据。"
+                : "账户设置及新 API Key 已保存。";
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, exception.Message, "编辑账户失败", MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            StatusText.Text = "编辑账户失败";
+        }
+        finally
+        {
+            SetBusy(StatusText.Text, false);
+        }
+    }
+
     private async void Refresh_Click(object sender, RoutedEventArgs e)
     {
         SetBusy("正在刷新……", true);
@@ -301,22 +354,27 @@ public partial class MainWindow : Window
 
     private void RefreshRows()
     {
+        var previousSelected = (AccountsGrid.SelectedItem as AccountRow)?.Id;
         var previousAlert = AlertAccountBox.SelectedValue as string;
         var previousDisplay = DisplayAccountBox.SelectedValue as string;
         var accounts = _coordinator.State.Accounts.ToDictionary(account => account.Id);
 
-        AccountsGrid.ItemsSource = _coordinator.CurrentSnapshots.Select(snapshot =>
+        var rows = _coordinator.CurrentSnapshots.Select(snapshot =>
         {
             var account = accounts[snapshot.CredentialId];
             return new AccountRow(
                 account.Id,
+                account.IsEnabled,
                 account.Provider.DisplayName(),
                 account.DisplayLabel,
                 account.CredentialSourceLabel,
-                snapshot.PrimaryText,
-                snapshot.SecondaryText,
+                account.IsEnabled ? snapshot.PrimaryText : "已停用",
+                account.IsEnabled ? snapshot.SecondaryText : "后台刷新、告警和浮岛显示已暂停",
                 snapshot.UpdatedAt == default ? "—" : snapshot.UpdatedAt.LocalDateTime.ToString("MM-dd HH:mm"));
         }).ToArray();
+        AccountsGrid.ItemsSource = rows;
+        AccountsGrid.SelectedItem = rows.FirstOrDefault(row => row.Id == previousSelected);
+        UpdateAccountActionButtons();
 
         var choices = _coordinator.State.Accounts
             .Select(account => new AccountChoice(account.Id,
@@ -397,4 +455,4 @@ public sealed record IslandPositionChoice(IslandPositionPreset Value, string Dis
 public sealed record IslandSizeChoice(IslandSizePreset Value, string Display);
 public sealed record AccountChoice(string Id, string Display);
 public sealed record AccountRow(
-    string Id, string Provider, string Label, string Source, string Primary, string Secondary, string Updated);
+    string Id, bool IsEnabled, string Provider, string Label, string Source, string Primary, string Secondary, string Updated);

@@ -110,6 +110,7 @@ public sealed class Account
     public Provider Provider { get; set; }
     public string Label { get; set; } = "";
     public string KeySuffix { get; set; } = "";
+    public bool IsEnabled { get; set; } = true;
     public int RefreshIntervalMinutes { get; set; }
     public bool ShowInIsland { get; set; } = true;
     public bool AlertEnabled { get; set; } = true;

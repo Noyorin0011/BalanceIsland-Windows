@@ -22,15 +22,15 @@
             <DropShadowEffect Color="#D0000000" BlurRadius="2" ShadowDepth="1" Opacity="0.9" />
         </Grid.Effect>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="32" />
+            <ColumnDefinition Width="29" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
-        <Border x:Name="ProviderIconBackground" Grid.Column="0" Width="24" Height="24"
+        <Border x:Name="ProviderIconBackground" Grid.Column="0" Width="22" Height="22"
                 CornerRadius="7" Background="Transparent" HorizontalAlignment="Center"
                 VerticalAlignment="Center">
             <Grid>
-                <Image x:Name="ProviderIconImage" Width="20" Height="20" Stretch="Uniform"
+                <Image x:Name="ProviderIconImage" Width="17" Height="17" Stretch="Uniform"
                        HorizontalAlignment="Center" VerticalAlignment="Center" />
                 <TextBlock x:Name="ProviderIconFallbackText" Text="+" Foreground="#10131A"
                            FontFamily="Segoe UI" FontSize="11" FontWeight="Bold"

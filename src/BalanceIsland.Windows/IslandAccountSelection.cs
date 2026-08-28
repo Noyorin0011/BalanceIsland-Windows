@@ -5,7 +5,7 @@ public static class IslandAccountSelection
     public static IReadOnlyList<BalanceSnapshot> VisibleSnapshots(BalanceCoordinator coordinator)
     {
         var visibleIds = coordinator.State.Accounts
-            .Where(account => account.ShowInIsland)
+            .Where(account => account.IsEnabled && account.ShowInIsland)
             .Select(account => account.Id)
             .ToHashSet(StringComparer.Ordinal);
         return coordinator.CurrentSnapshots

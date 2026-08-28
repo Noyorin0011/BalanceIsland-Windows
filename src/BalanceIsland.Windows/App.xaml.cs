@@ -96,6 +96,8 @@ public partial class App : System.Windows.Application
         _mainWindow.Activate();
     }
 
+    public void TrackWindow(Window window) => _themeManager?.Track(window);
+
     private void SetIslandVisible(bool visible)
     {
         if (_coordinator is null) return;

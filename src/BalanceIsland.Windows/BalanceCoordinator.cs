@@ -94,6 +94,46 @@ public sealed class BalanceCoordinator : IDisposable
         SaveAndNotify();
     }
 
+    public void SetAccountEnabled(string credentialId, bool enabled)
+    {
+        var account = State.Accounts.FirstOrDefault(item => item.Id == credentialId)
+            ?? throw new ArgumentException("账户不存在", nameof(credentialId));
+        if (account.IsEnabled == enabled) return;
+        account.IsEnabled = enabled;
+        if (enabled) State.Schedules.Remove(account.Id);
+        SaveAndNotify();
+    }
+
+    public async Task UpdateAccountAsync(
+        string credentialId,
+        string label,
+        string rawApiKey,
+        double? manualBalance,
+        int refreshIntervalMinutes)
+    {
+        var account = State.Accounts.FirstOrDefault(item => item.Id == credentialId)
+            ?? throw new ArgumentException("账户不存在", nameof(credentialId));
+        if (refreshIntervalMinutes is < 0 or > 1440)
+            throw new ArgumentOutOfRangeException(nameof(refreshIntervalMinutes));
+
+        var key = ApiKeySanitizer.Clean(rawApiKey);
+        if (!string.IsNullOrWhiteSpace(key))
+        {
+            _credentials.Write(account.Id, key);
+            account.KeySuffix = key.Length <= 4 ? key : key[^4..];
+            account.CredentialSource = CredentialSource.WindowsCredentialManager;
+            account.EnvironmentVariableName = null;
+        }
+
+        account.Label = label.Trim();
+        account.ManualBalance = manualBalance;
+        account.RefreshIntervalMinutes = refreshIntervalMinutes;
+        State.Schedules.Remove(account.Id);
+        State.Snapshots[account.Id] = Waiting(account);
+        SaveAndNotify();
+        if (account.IsEnabled) await RefreshDueAsync(force: true, targetCredentialId: account.Id);
+    }
+
     public void SetIslandEnabled(bool enabled)
     {
         State.IslandEnabled = enabled;
@@ -251,6 +291,7 @@ public sealed class BalanceCoordinator : IDisposable
             foreach (var account in State.Accounts.ToArray())
             {
                 if (targetCredentialId is not null && account.Id != targetCredentialId) continue;
+                if (!account.IsEnabled) continue;
                 var schedule = State.Schedules.TryGetValue(account.Id, out var stored)
                     ? stored : State.Schedules[account.Id] = new ScheduleState();
                 if (!ShouldAttempt(schedule, account.EffectiveRefreshMinutes, force)) continue;

@@ -14,6 +14,7 @@
         <SolidColorBrush x:Key="PrimaryText" Color="#F3F6F9" />
         <SolidColorBrush x:Key="SecondaryText" Color="#AAB4BF" />
         <SolidColorBrush x:Key="DisabledText" Color="#707B87" />
+        <SolidColorBrush x:Key="DangerText" Color="#FF6673" />
         <SolidColorBrush x:Key="AccentBrush" Color="#6EA8FE" />
         <SolidColorBrush x:Key="AccentHoverBrush" Color="#8BBBFF" />
         <SolidColorBrush x:Key="SelectionBrush" Color="#315B86" />
