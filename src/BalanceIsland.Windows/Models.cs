@@ -95,6 +95,7 @@ public sealed class Account
     public string Label { get; set; } = "";
     public string KeySuffix { get; set; } = "";
     public int RefreshIntervalMinutes { get; set; }
+    public bool ShowInIsland { get; set; } = true;
     public bool AlertEnabled { get; set; } = true;
     public double WarningLine { get; set; } = 20;
     public double DropStep { get; set; } = 5;
