@@ -81,8 +81,10 @@
                                 IsEnabled="False" MinWidth="92" />
                         <Button x:Name="EditAccountButton" Content="编辑" Click="EditSelectedAccount_Click"
                                 IsEnabled="False" MinWidth="76" />
-                        <Button x:Name="DeleteAccountButton" Content="删除所选" Click="DeleteSelected_Click"
-                                Foreground="{DynamicResource DangerText}" IsEnabled="False" MinWidth="92" />
+                        <Button x:Name="DeleteAccountButton" Click="DeleteSelected_Click"
+                                IsEnabled="False" MinWidth="92">
+                            <TextBlock Text="删除所选" Foreground="{DynamicResource DangerText}" />
+                        </Button>
                     </StackPanel>
                 </Grid>
             </TabItem>
@@ -229,12 +231,7 @@
 
             <TabItem Header="刷新与通知">
                 <Grid Margin="14">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-                    <StackPanel Grid.Row="0">
+                    <StackPanel>
                         <TextBlock Text="刷新与通知" FontSize="18" FontWeight="SemiBold" />
                         <TextBlock Text="每个 Provider 使用自己的推荐刷新周期，也可在添加账户时覆盖。遇到 429 会指数退避；余额告警通过 Windows 托盘通知显示。"
                                    Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,2,0,14" />
@@ -246,15 +243,21 @@
                             </StackPanel>
                         </Border>
                     </StackPanel>
-                    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-                        <Button Content="立即刷新全部账户" Click="Refresh_Click" />
-                        <Button x:Name="IslandButton" Content="隐藏任务栏浮岛" Click="ToggleIsland_Click" />
-                    </StackPanel>
                 </Grid>
             </TabItem>
         </TabControl>
 
-        <TextBlock x:Name="StatusText" Grid.Row="2" Margin="0,12,0,0" VerticalAlignment="Center"
-                   Foreground="{DynamicResource SecondaryText}" Text="就绪" TextWrapping="Wrap" />
+        <Grid Grid.Row="2" Margin="0,12,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="StatusText" Grid.Column="0" VerticalAlignment="Center"
+                       Foreground="{DynamicResource SecondaryText}" Text="就绪" TextWrapping="Wrap" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="立即刷新全部账户" Click="Refresh_Click" />
+                <Button x:Name="IslandButton" Content="隐藏任务栏浮岛" Click="ToggleIsland_Click" />
+            </StackPanel>
+        </Grid>
     </Grid>
 </Window>
