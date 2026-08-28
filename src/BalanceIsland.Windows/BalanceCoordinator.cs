@@ -27,6 +27,9 @@ public sealed class BalanceCoordinator : IDisposable
         _credentials = credentials;
         _client = client;
         State = store.Load();
+        if (State.EnvironmentAutoImportEnabled)
+            ImportEnvironmentAccounts(saveAndNotify: false);
+        _store.Save(State);
         _timer = new System.Threading.Timer(async _ => await RefreshFromTimerAsync(), null,
             TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(30));
     }
@@ -53,7 +56,8 @@ public sealed class BalanceCoordinator : IDisposable
             KeySuffix = key.Length <= 4 ? key : key[^4..],
             ManualBalance = manualBalance,
             RefreshIntervalMinutes = refreshIntervalMinutes == 0
-                ? 0 : Math.Clamp(refreshIntervalMinutes, 1, 1440)
+                ? 0 : Math.Clamp(refreshIntervalMinutes, 1, 1440),
+            CredentialSource = CredentialSource.WindowsCredentialManager
         };
 
         _credentials.Write(account.Id, key);
@@ -65,12 +69,14 @@ public sealed class BalanceCoordinator : IDisposable
 
     public void RemoveAccount(string credentialId)
     {
-        State.Accounts.RemoveAll(account => account.Id == credentialId);
+        var account = State.Accounts.FirstOrDefault(item => item.Id == credentialId);
+        State.Accounts.RemoveAll(item => item.Id == credentialId);
         State.Snapshots.Remove(credentialId);
         State.Schedules.Remove(credentialId);
         State.DailyUsage.Remove(credentialId);
         State.Alerts.Remove(credentialId);
-        _credentials.Delete(credentialId);
+        if (account?.CredentialSource == CredentialSource.WindowsCredentialManager)
+            _credentials.Delete(credentialId);
         SaveAndNotify();
     }
 
@@ -87,6 +93,108 @@ public sealed class BalanceCoordinator : IDisposable
         SaveAndNotify();
     }
 
+    public void SetIslandEditMode(bool enabled)
+    {
+        if (State.IslandEditMode == enabled) return;
+        State.IslandEditMode = enabled;
+        SaveAndNotify();
+    }
+
+    public void SetIslandSize(double width, double height)
+    {
+        State.IslandWidth = Math.Clamp(width, 160, 720);
+        State.IslandHeight = Math.Clamp(height, 24, 80);
+        SaveAndNotify();
+    }
+
+    public void SaveIslandEditBounds(double left, double top, double width, double height)
+    {
+        State.IslandEditLeft = left;
+        State.IslandEditTop = top;
+        State.IslandWidth = Math.Clamp(width, 160, 720);
+        State.IslandHeight = Math.Clamp(height, 24, 80);
+        _store.Save(State);
+    }
+
+    public void SetEnvironmentAutoImport(bool enabled)
+    {
+        State.EnvironmentAutoImportEnabled = enabled;
+        if (enabled) ImportEnvironmentAccounts(saveAndNotify: false);
+        SaveAndNotify();
+    }
+
+    public EnvironmentImportResult ImportEnvironmentAccounts() => ImportEnvironmentAccounts(true);
+
+    private EnvironmentImportResult ImportEnvironmentAccounts(bool saveAndNotify)
+    {
+        var found = EnvironmentCredentialDiscovery.Scan();
+        var added = new List<string>();
+        var refreshed = new List<string>();
+        foreach (var candidate in found)
+        {
+            var envAccount = State.Accounts.FirstOrDefault(account =>
+                account.CredentialSource == CredentialSource.EnvironmentVariable &&
+                account.Provider == candidate.Provider &&
+                string.Equals(account.EnvironmentVariableName, candidate.VariableName, StringComparison.OrdinalIgnoreCase));
+            if (envAccount is not null)
+            {
+                var suffix = candidate.ApiKey.Length <= 4 ? candidate.ApiKey : candidate.ApiKey[^4..];
+                if (envAccount.KeySuffix != suffix)
+                {
+                    envAccount.KeySuffix = suffix;
+                    refreshed.Add(candidate.Provider.DisplayName());
+                }
+                continue;
+            }
+
+            var duplicateExplicit = State.Accounts.Any(account =>
+                account.Provider == candidate.Provider &&
+                account.CredentialSource == CredentialSource.WindowsCredentialManager &&
+                string.Equals(_credentials.Read(account.Id), candidate.ApiKey, StringComparison.Ordinal));
+            if (duplicateExplicit) continue;
+
+            var account = new Account
+            {
+                Provider = candidate.Provider,
+                Label = $"环境变量：{candidate.VariableName}",
+                KeySuffix = candidate.ApiKey.Length <= 4 ? candidate.ApiKey : candidate.ApiKey[^4..],
+                CredentialSource = CredentialSource.EnvironmentVariable,
+                EnvironmentVariableName = candidate.VariableName
+            };
+            State.Accounts.Add(account);
+            State.Snapshots[account.Id] = Waiting(account);
+            added.Add(candidate.Provider.DisplayName());
+        }
+
+        if (saveAndNotify && (added.Count > 0 || refreshed.Count > 0)) SaveAndNotify();
+        return new EnvironmentImportResult(found.Count, added, refreshed);
+    }
+
+    public void UpdateAlertSettings(
+        string credentialId,
+        bool enabled,
+        double warningLine,
+        double dropStep,
+        bool anomalyEnabled,
+        double anomalyThreshold,
+        double anomalyPercentThreshold,
+        AnomalyMode anomalyMode,
+        int cooldownMinutes)
+    {
+        var account = State.Accounts.FirstOrDefault(item => item.Id == credentialId)
+            ?? throw new ArgumentException("账户不存在");
+        account.AlertEnabled = enabled;
+        account.WarningLine = Math.Max(0, warningLine);
+        account.DropStep = Math.Max(0.01, dropStep);
+        account.AnomalyEnabled = anomalyEnabled;
+        account.AnomalyThreshold = Math.Max(0.01, anomalyThreshold);
+        account.AnomalyPercentThreshold = Math.Max(0.01, anomalyPercentThreshold);
+        account.AnomalyMode = anomalyMode;
+        account.AnomalyCooldownMinutes = Math.Clamp(cooldownMinutes, 1, 10080);
+        State.Alerts.Remove(account.Id);
+        SaveAndNotify();
+    }
+
     public async Task RefreshDueAsync(bool force, string? targetCredentialId = null)
     {
         if (!await _refreshLock.WaitAsync(0)) return;
@@ -99,10 +207,14 @@ public sealed class BalanceCoordinator : IDisposable
                     ? stored : State.Schedules[account.Id] = new ScheduleState();
                 if (!ShouldAttempt(schedule, account.EffectiveRefreshMinutes, force)) continue;
 
-                var key = _credentials.Read(account.Id);
+                var key = ResolveApiKey(account);
                 if (string.IsNullOrWhiteSpace(key))
                 {
-                    State.Snapshots[account.Id] = Error(account, "Windows 凭据管理器中没有该 API Key");
+                    var source = account.CredentialSource == CredentialSource.EnvironmentVariable
+                        ? $"环境变量 {account.EnvironmentVariableName} 当前不存在或为空"
+                        : "Windows 凭据管理器中没有该 API Key";
+                    State.Snapshots[account.Id] = Error(account, source);
+                    SaveAndNotify();
                     continue;
                 }
 
@@ -146,16 +258,22 @@ public sealed class BalanceCoordinator : IDisposable
         }
     }
 
+    private string? ResolveApiKey(Account account) => account.CredentialSource switch
+    {
+        CredentialSource.EnvironmentVariable => EnvironmentCredentialDiscovery.Read(account.EnvironmentVariableName),
+        _ => _credentials.Read(account.Id)
+    };
+
     private async Task RefreshFromTimerAsync()
     {
         try
         {
+            if (State.EnvironmentAutoImportEnabled) ImportEnvironmentAccounts(saveAndNotify: true);
             await RefreshDueAsync(force: false);
         }
         catch
         {
             // A background persistence failure must not terminate the tray process.
-            // The next heartbeat will retry; API keys are never included in errors.
         }
     }
 
@@ -366,3 +484,8 @@ public sealed class BalanceAlertEventArgs(string title, string message) : EventA
     public string Title { get; } = title;
     public string Message { get; } = message;
 }
+
+public sealed record EnvironmentImportResult(
+    int FoundCount,
+    IReadOnlyList<string> AddedProviders,
+    IReadOnlyList<string> RefreshedProviders);

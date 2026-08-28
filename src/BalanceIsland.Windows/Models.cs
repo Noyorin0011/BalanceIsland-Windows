@@ -44,6 +44,12 @@ public enum IslandDisplayMode
     TaskbarEmbedded
 }
 
+public enum CredentialSource
+{
+    WindowsCredentialManager,
+    EnvironmentVariable
+}
+
 public static class ProviderInfo
 {
     public static string DisplayName(this Provider value) => value switch
@@ -89,6 +95,7 @@ public sealed class Account
     public string Label { get; set; } = "";
     public string KeySuffix { get; set; } = "";
     public int RefreshIntervalMinutes { get; set; }
+    public bool ShowInIsland { get; set; } = true;
     public bool AlertEnabled { get; set; } = true;
     public double WarningLine { get; set; } = 20;
     public double DropStep { get; set; } = 5;
@@ -99,9 +106,15 @@ public sealed class Account
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public AnomalyMode AnomalyMode { get; set; } = AnomalyMode.Both;
     public int AnomalyCooldownMinutes { get; set; } = 1440;
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public CredentialSource CredentialSource { get; set; } = CredentialSource.WindowsCredentialManager;
+    public string? EnvironmentVariableName { get; set; }
 
     [JsonIgnore]
     public string DisplayLabel => string.IsNullOrWhiteSpace(Label) ? $"••••{KeySuffix}" : Label;
+    [JsonIgnore]
+    public string CredentialSourceLabel => CredentialSource == CredentialSource.EnvironmentVariable
+        ? $"环境变量 · {EnvironmentVariableName}" : "Windows 凭据管理器";
     [JsonIgnore]
     public int EffectiveRefreshMinutes => RefreshIntervalMinutes > 0
         ? Math.Clamp(RefreshIntervalMinutes, 1, 1440)
@@ -183,6 +196,12 @@ public sealed class AppState
     public bool IslandEnabled { get; set; } = true;
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public IslandDisplayMode IslandDisplayMode { get; set; } = IslandDisplayMode.Floating;
+    public bool IslandEditMode { get; set; }
+    public double IslandWidth { get; set; } = 310;
+    public double IslandHeight { get; set; } = 28;
+    public double IslandEditLeft { get; set; } = double.NaN;
+    public double IslandEditTop { get; set; } = double.NaN;
+    public bool EnvironmentAutoImportEnabled { get; set; }
 }
 
 public sealed record ApiCredential(Account Account, string ApiKey);

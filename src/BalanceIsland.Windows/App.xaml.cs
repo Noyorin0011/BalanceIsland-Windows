@@ -8,6 +8,7 @@ namespace BalanceIsland.Windows;
 public partial class App : System.Windows.Application
 {
     private Forms.NotifyIcon? _trayIcon;
+    private Icon? _appIcon;
     private MainWindow? _mainWindow;
     private TaskbarIslandWindow? _island;
     private BalanceCoordinator? _coordinator;
@@ -19,13 +20,17 @@ public partial class App : System.Windows.Application
         base.OnStartup(e);
 
         _themeManager = new SystemThemeManager(Resources, Dispatcher);
+        _appIcon = AppIconFactory.CreateIcon(64);
 
         var store = new AppDataStore();
         var credentials = new WindowsCredentialStore();
         var client = new ProviderClient();
         _coordinator = new BalanceCoordinator(store, credentials, client);
 
-        _mainWindow = new MainWindow(_coordinator);
+        _mainWindow = new MainWindow(_coordinator)
+        {
+            Icon = AppIconFactory.CreateImageSource(64)
+        };
         _themeManager.Track(_mainWindow);
         CreateIslandWindow();
         _mainWindow.IslandVisibilityRequested += (_, visible) => SetIslandVisible(visible);
@@ -71,7 +76,7 @@ public partial class App : System.Windows.Application
 
         _trayIcon = new Forms.NotifyIcon
         {
-            Icon = SystemIcons.Information,
+            Icon = _appIcon ?? SystemIcons.Information,
             Text = "Balance Island",
             Visible = true,
             ContextMenuStrip = menu
@@ -153,6 +158,7 @@ public partial class App : System.Windows.Application
             _trayIcon.Visible = false;
             _trayIcon.Dispose();
         }
+        _appIcon?.Dispose();
         _island?.Close();
         _mainWindow?.Close();
         _coordinator?.Dispose();

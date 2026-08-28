@@ -22,6 +22,7 @@ public sealed class TaskbarEmbedder
     private const uint SwpShowWindow = 0x0040;
     private const int SwShowNoActivate = 4;
     private const int Gap = 6;
+    private const int TrayClearance = 42;
     private const int MinimumWidthDip = 120;
     private const string TaskbarAlignmentKey =
         @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced";
@@ -70,7 +71,6 @@ public sealed class TaskbarEmbedder
         int right;
         if (centered)
         {
-            // Windows 11 centered layout: occupy the unused far-left gap, after Widgets if shown.
             left = Math.Max(taskbarRect.Left + 8,
                 geometry.WidgetsButton.IsValid ? geometry.WidgetsButton.Right + Gap : taskbarRect.Left + 8);
             right = Math.Min(notificationLeft - Gap,
@@ -78,11 +78,10 @@ public sealed class TaskbarEmbedder
         }
         else
         {
-            // Windows 10 and Windows 11 left layout: sit immediately before the tray/notification area.
             left = geometry.TaskButtons.IsValid
                 ? geometry.TaskButtons.Right + Gap
                 : geometry.StartButton.IsValid ? geometry.StartButton.Right + Gap : taskbarRect.Left + taskbarHeight + Gap;
-            right = notificationLeft - Gap;
+            right = notificationLeft - Gap - Math.Max(1, (int)Math.Round(TrayClearance * dpi / 96d));
         }
 
         var available = right - left;
@@ -121,7 +120,7 @@ public sealed class TaskbarEmbedder
         ShowWindow(window, SwShowNoActivate);
         _window = window;
         _taskbar = taskbar;
-        var label = centered ? "已嵌入任务栏左侧" : "已嵌入通知区域左侧";
+        var label = centered ? "已嵌入任务栏左侧" : "已嵌入通知区域左侧（预留系统托盘间距）";
         return TaskbarAttachResult.Succeeded(label, width * 96d / dpi);
     }
 
