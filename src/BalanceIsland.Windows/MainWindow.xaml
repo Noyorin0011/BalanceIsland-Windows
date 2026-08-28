@@ -135,8 +135,21 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="14">
                         <TextBlock Text="显示账号" FontSize="18" FontWeight="SemiBold" />
-                        <TextBlock Text="浮岛按当前账户列表自动轮播。后续可在这里继续扩展为按账户勾选显示；当前不会改变账户数据。"
-                                   Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,2,0,14" />
+                        <TextBlock Text="选择哪些账户参加浮岛轮播。关闭显示不会删除账户、停止刷新或关闭余额告警。"
+                                   Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,2,0,10" />
+                        <Border Background="{DynamicResource CardBackground}" CornerRadius="10" Padding="16" Margin="0,0,0,16">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ComboBox x:Name="DisplayAccountBox" Grid.Column="0" DisplayMemberPath="Display" SelectedValuePath="Id"
+                                          SelectionChanged="DisplayAccountBox_SelectionChanged" Margin="0,0,12,0" />
+                                <CheckBox x:Name="DisplayAccountVisibleBox" Grid.Column="1" Content="在浮岛显示" VerticalAlignment="Center" Margin="0,0,12,0" />
+                                <Button Grid.Column="2" Content="保存" Click="SaveDisplayAccount_Click" />
+                            </Grid>
+                        </Border>
 
                         <TextBlock Text="位置 / 尺寸" FontSize="18" FontWeight="SemiBold" />
                         <TextBlock Text="正常模式固定并点击穿透；开启编辑后浮岛会脱离任务栏层级并提升到任务栏上方，可拖动与缩放。"
