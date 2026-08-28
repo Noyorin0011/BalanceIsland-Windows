@@ -39,6 +39,16 @@ public sealed class TaskbarEmbedder
     public bool IsAttached => _window != IntPtr.Zero && IsWindow(_window) &&
                               _taskbar != IntPtr.Zero && GetParent(_window) == _taskbar;
 
+    public int GetPreferredFloatingLeft(IntPtr taskbar, int fallbackLeft, int gap)
+    {
+        if (taskbar == IntPtr.Zero || !GetWindowRect(taskbar, out var taskbarRect))
+            return fallbackLeft;
+        var geometry = ReadGeometryCached(taskbar, taskbarRect);
+        return geometry.WidgetsButton.IsValid
+            ? Math.Max(fallbackLeft, geometry.WidgetsButton.Right + Math.Max(0, gap))
+            : fallbackLeft;
+    }
+
     public TaskbarAttachResult AttachOrUpdate(IntPtr window, double desiredWidthDip, double desiredHeightDip)
     {
         if (window == IntPtr.Zero || !IsWindow(window))

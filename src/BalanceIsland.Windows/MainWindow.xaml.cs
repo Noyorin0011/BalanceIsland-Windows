@@ -11,6 +11,7 @@ namespace BalanceIsland.Windows;
 public partial class MainWindow : Window
 {
     private readonly BalanceCoordinator _coordinator;
+    private readonly bool _isWindows11;
     private bool _updatingIslandMode;
     private bool _loadingControls;
 
@@ -21,18 +22,29 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _coordinator = coordinator;
+        _isWindows11 = OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
 
         ProviderBox.ItemsSource = Enum.GetValues<Provider>()
             .Select(value => new ProviderChoice(value, value.DisplayName()))
             .ToArray();
         ProviderBox.SelectedIndex = 0;
 
-        IslandModeBox.ItemsSource = new[]
-        {
-            new IslandModeChoice(IslandDisplayMode.Floating, "悬浮窗"),
-            new IslandModeChoice(IslandDisplayMode.TaskbarEmbedded, "任务栏嵌入（实验）")
-        };
+        IslandModeBox.ItemsSource = _isWindows11
+            ? new[] { new IslandModeChoice(IslandDisplayMode.Floating, "透明悬浮窗") }
+            : new[]
+            {
+                new IslandModeChoice(IslandDisplayMode.Floating, "透明悬浮窗"),
+                new IslandModeChoice(IslandDisplayMode.TaskbarEmbedded, "任务栏组件（兼容）")
+            };
         IslandModeBox.SelectionChanged += IslandModeBox_SelectionChanged;
+
+        PositionPresetBox.ItemsSource = new[]
+        {
+            new IslandPositionChoice(IslandPositionPreset.Left, "左侧（Widgets 后）"),
+            new IslandPositionChoice(IslandPositionPreset.Center, "任务栏居中"),
+            new IslandPositionChoice(IslandPositionPreset.Right, "右侧（托盘前）"),
+            new IslandPositionChoice(IslandPositionPreset.Custom, "自定义")
+        };
 
         AnomalyModeBox.ItemsSource = new[]
         {
@@ -43,12 +55,11 @@ public partial class MainWindow : Window
 
         SizePresetBox.ItemsSource = new[]
         {
-            new IslandSizePreset("紧凑 · 260 × 26", 260, 26),
-            new IslandSizePreset("默认 · 310 × 28", 310, 28),
-            new IslandSizePreset("宽 · 380 × 30", 380, 30),
-            new IslandSizePreset("大 · 460 × 34", 460, 34)
+            new IslandSizeChoice(IslandSizePreset.Compact, "紧凑 · 190 × 32"),
+            new IslandSizeChoice(IslandSizePreset.Standard, "标准 · 225 × 38"),
+            new IslandSizeChoice(IslandSizePreset.Large, "大号 · 285 × 48"),
+            new IslandSizeChoice(IslandSizePreset.Custom, "自定义")
         };
-        SizePresetBox.SelectedIndex = 1;
 
         EnvironmentVariablesText.Text = EnvironmentCredentialDiscovery.SupportedVariablesText;
         EnvironmentLimitationsText.Text = EnvironmentCredentialDiscovery.LimitationsText;
@@ -140,19 +151,27 @@ public partial class MainWindow : Window
             : "编辑模式已关闭：浮岛恢复固定并穿透鼠标点击。";
     }
 
+    private void PositionPresetBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loadingControls || PositionPresetBox.SelectedValue is not IslandPositionPreset preset) return;
+        _coordinator.SetIslandPositionPreset(preset);
+        StatusText.Text = preset == IslandPositionPreset.Custom
+            ? "已切换到保存的自定义位置。"
+            : "浮岛位置预设已应用。";
+    }
+
+    private void SizePresetBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loadingControls || SizePresetBox.SelectedValue is not IslandSizePreset preset ||
+            preset == IslandSizePreset.Custom) return;
+        _coordinator.SetIslandSizePreset(preset);
+        StatusText.Text = $"浮岛尺寸已设为 {_coordinator.State.IslandWidth:0} × {_coordinator.State.IslandHeight:0}。";
+    }
+
     private void ApplyIslandSize_Click(object sender, RoutedEventArgs e)
     {
-        double width;
-        double height;
-        if (SizePresetBox.SelectedItem is IslandSizePreset preset)
-        {
-            width = preset.Width;
-            height = preset.Height;
-            IslandWidthBox.Text = width.ToString("0", CultureInfo.InvariantCulture);
-            IslandHeightBox.Text = height.ToString("0", CultureInfo.InvariantCulture);
-        }
-        else if (!TryPositiveDouble(IslandWidthBox.Text, out width) ||
-                 !TryPositiveDouble(IslandHeightBox.Text, out height))
+        if (!TryPositiveDouble(IslandWidthBox.Text, out var width) ||
+            !TryPositiveDouble(IslandHeightBox.Text, out var height))
         {
             MessageBox.Show(this, "浮岛宽度和高度必须是正数。", "Balance Island");
             return;
@@ -250,6 +269,7 @@ public partial class MainWindow : Window
 
     public void UpdateIslandControls(bool visible, IslandDisplayMode mode, string? status = null)
     {
+        if (_isWindows11) mode = IslandDisplayMode.Floating;
         UpdateIslandButton(visible);
         _updatingIslandMode = true;
         IslandModeBox.SelectedValue = mode;
@@ -259,6 +279,8 @@ public partial class MainWindow : Window
         try
         {
             EditIslandBox.IsChecked = _coordinator.State.IslandEditMode;
+            PositionPresetBox.SelectedValue = _coordinator.State.IslandPositionPreset;
+            SizePresetBox.SelectedValue = _coordinator.State.IslandSizePreset;
             IslandWidthBox.Text = _coordinator.State.IslandWidth.ToString("0", CultureInfo.InvariantCulture);
             IslandHeightBox.Text = _coordinator.State.IslandHeight.ToString("0", CultureInfo.InvariantCulture);
             EnvironmentAutoImportBox.IsChecked = _coordinator.State.EnvironmentAutoImportEnabled;
@@ -271,7 +293,7 @@ public partial class MainWindow : Window
         IslandModeStatus.Text = status ?? mode switch
         {
             IslandDisplayMode.TaskbarEmbedded => "挂载到 Explorer 任务栏；不可用时自动回退悬浮",
-            _ => "悬浮在通知区域左侧"
+            _ => "透明悬浮；全屏时自动隐藏，锁定后鼠标穿透"
         };
     }
 
@@ -311,6 +333,8 @@ public partial class MainWindow : Window
             DisplayAccountBox.SelectedValue = choices.Any(item => item.Id == previousDisplay)
                 ? previousDisplay : choices.FirstOrDefault()?.Id;
             EditIslandBox.IsChecked = _coordinator.State.IslandEditMode;
+            PositionPresetBox.SelectedValue = _coordinator.State.IslandPositionPreset;
+            SizePresetBox.SelectedValue = _coordinator.State.IslandSizePreset;
             EnvironmentAutoImportBox.IsChecked = _coordinator.State.EnvironmentAutoImportEnabled;
             IslandWidthBox.Text = _coordinator.State.IslandWidth.ToString("0", CultureInfo.InvariantCulture);
             IslandHeightBox.Text = _coordinator.State.IslandHeight.ToString("0", CultureInfo.InvariantCulture);
@@ -369,7 +393,8 @@ public partial class MainWindow : Window
 public sealed record ProviderChoice(Provider Value, string Display);
 public sealed record IslandModeChoice(IslandDisplayMode Value, string Display);
 public sealed record AnomalyModeChoice(AnomalyMode Value, string Display);
-public sealed record IslandSizePreset(string Display, double Width, double Height);
+public sealed record IslandPositionChoice(IslandPositionPreset Value, string Display);
+public sealed record IslandSizeChoice(IslandSizePreset Value, string Display);
 public sealed record AccountChoice(string Id, string Display);
 public sealed record AccountRow(
     string Id, string Provider, string Label, string Source, string Primary, string Secondary, string Updated);

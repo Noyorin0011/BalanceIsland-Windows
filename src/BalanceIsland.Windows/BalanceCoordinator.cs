@@ -27,6 +27,20 @@ public sealed class BalanceCoordinator : IDisposable
         _credentials = credentials;
         _client = client;
         State = store.Load();
+        if (State.IslandLayoutVersion < 1)
+        {
+            State.IslandPositionPreset = IslandPositionPreset.Left;
+            State.IslandSizePreset = IslandSizePreset.Standard;
+            State.IslandWidth = 225;
+            State.IslandHeight = 38;
+            State.IslandEditMode = false;
+            State.IslandLayoutVersion = 1;
+        }
+        else if (State.IslandEditMode)
+        {
+            // Editing is session-only so the overlay always starts locked and click-through.
+            State.IslandEditMode = false;
+        }
         if (State.EnvironmentAutoImportEnabled)
             ImportEnvironmentAccounts(saveAndNotify: false);
         _store.Save(State);
@@ -100,10 +114,44 @@ public sealed class BalanceCoordinator : IDisposable
         SaveAndNotify();
     }
 
+    public void SetIslandPositionPreset(IslandPositionPreset preset)
+    {
+        if (State.IslandPositionPreset == preset) return;
+        State.IslandPositionPreset = preset;
+        SaveAndNotify();
+    }
+
+    public void SetIslandSizePreset(IslandSizePreset preset)
+    {
+        if (preset == IslandSizePreset.Custom) return;
+        var size = preset switch
+        {
+            IslandSizePreset.Compact => (Width: 190d, Height: 32d),
+            IslandSizePreset.Large => (Width: 285d, Height: 48d),
+            _ => (Width: 225d, Height: 38d)
+        };
+        State.IslandSizePreset = preset;
+        State.IslandWidth = size.Width;
+        State.IslandHeight = size.Height;
+        SaveAndNotify();
+    }
+
     public void SetIslandSize(double width, double height)
     {
-        State.IslandWidth = Math.Clamp(width, 160, 720);
-        State.IslandHeight = Math.Clamp(height, 24, 80);
+        State.IslandSizePreset = IslandSizePreset.Custom;
+        State.IslandWidth = Math.Clamp(width, 160, 480);
+        State.IslandHeight = Math.Clamp(height, 28, 100);
+        SaveAndNotify();
+    }
+
+    public void SaveIslandCustomLayout(double leftDip, double topDip, double widthDip, double heightDip)
+    {
+        State.IslandPositionPreset = IslandPositionPreset.Custom;
+        State.IslandSizePreset = IslandSizePreset.Custom;
+        State.IslandCustomLeftDip = leftDip;
+        State.IslandCustomTopDip = topDip;
+        State.IslandWidth = Math.Clamp(widthDip, 160, 480);
+        State.IslandHeight = Math.Clamp(heightDip, 28, 100);
         SaveAndNotify();
     }
 
@@ -111,8 +159,8 @@ public sealed class BalanceCoordinator : IDisposable
     {
         State.IslandEditLeft = left;
         State.IslandEditTop = top;
-        State.IslandWidth = Math.Clamp(width, 160, 720);
-        State.IslandHeight = Math.Clamp(height, 24, 80);
+        State.IslandWidth = Math.Clamp(width, 160, 480);
+        State.IslandHeight = Math.Clamp(height, 28, 100);
         _store.Save(State);
     }
 
