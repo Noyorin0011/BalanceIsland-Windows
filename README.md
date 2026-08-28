@@ -2,22 +2,24 @@
 
 Windows 任务栏 AI API 余额与用量监控工具。当前仓库是以 Android
 [Balance Island v0.9.2](https://github.com/Noyorin0011/BalanceIsland/releases/tag/v0.9.2)
-为行为基线建立的 Windows 版本；当前应用版本为 `0.1.1`。
+为行为基线建立的 Windows 版本；当前应用版本为 `0.2.1`。
 
 ## 当前功能
 
 - Windows 10 1809+ / Windows 11，C#、.NET 8、WPF 与 Win32。
 - 托盘常驻；关闭主窗口后继续运行，托盘菜单可打开、刷新、切换浮岛或退出。
-- 浮岛支持“悬浮窗”和“任务栏嵌入（实验）”两种模式并持久化选择。
-- 嵌入模式把浮岛 HWND 挂载到 Explorer 任务栏：Windows 11 居中布局位于左侧；
-  Windows 11 左对齐和 Windows 10 位于通知区域左侧。
-- 每 5 秒轮换账户，单击立即切换，右键打开设置。
-- 设置窗口、原生标题栏和任务栏浮岛跟随 Windows 应用深浅色模式，运行中切换主题会立即更新。
+- Windows 11 使用透明悬浮模式；Windows 10 保留“悬浮窗 / 任务栏组件（兼容）”模式。
+- 浮岛支持 Widgets 后、任务栏居中、托盘前三种位置预设，以及紧凑、标准、大号和自定义尺寸。
+- 开启编辑后可直接拖动和八方向缩放；关闭后固定并鼠标穿透，避免挡住任务栏按钮。
+- 每 5 秒轮换已勾选显示的账户；全屏切入/切出由 Windows 事件立即驱动，并在 80ms 后复核。
+- 浮岛为透明无背景的双行白字布局，显示与 Android 版同源的九家 Provider 矢量图标。
+- 设置窗口、标签页、控件、表格和原生标题栏跟随 Windows 深浅色模式，运行中切换会立即更新。
 - 同一 Provider 多账户；备注留空时显示 API Key 后四位。
 - API Key 清洗与 Windows Credential Manager 存储；本地 JSON 不保存完整 Key。
 - 每账户 `1–1440` 分钟刷新，`0` 使用 v0.9.2 的 Provider 建议周期。
 - 手动刷新 30 秒防抖；HTTP 429 遵循 `Retry-After` 并指数退避，最长 24 小时。
-- 手动余额、警告线、接近警告线状态以及本地托盘通知基础设施。
+- 手动余额、警告线、固定下降步长、异常变动检测以及本地托盘通知。
+- 可从受支持的进程、用户和系统环境变量动态发现 Provider 凭据。
 - DeepSeek、OpenAI、OpenRouter、SiliconFlow、Moonshot、MiMo、Anthropic、Gemini 与 xAI。
 - DeepSeek、Moonshot、SiliconFlow 的本地“今日已用”估算会跨进程保存并修正检测到的充值。
 

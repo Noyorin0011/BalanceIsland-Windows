@@ -59,6 +59,7 @@ public sealed class SystemThemeManager : IDisposable
             Set("PrimaryText", WpfSystemColors.WindowTextColor);
             Set("SecondaryText", WpfSystemColors.GrayTextColor);
             Set("DisabledText", WpfSystemColors.GrayTextColor);
+            Set("DangerText", WpfSystemColors.HotTrackColor);
             Set("AccentBrush", WpfSystemColors.HighlightColor);
             Set("AccentHoverBrush", WpfSystemColors.HotTrackColor);
             Set("SelectionBrush", WpfSystemColors.HighlightColor);
@@ -78,6 +79,7 @@ public sealed class SystemThemeManager : IDisposable
             Set("PrimaryText", "#F3F6F9");
             Set("SecondaryText", "#AAB4BF");
             Set("DisabledText", "#707B87");
+            Set("DangerText", "#FF6673");
             Set("AccentBrush", "#6EA8FE");
             Set("AccentHoverBrush", "#8BBBFF");
             Set("SelectionBrush", "#315B86");
@@ -97,6 +99,7 @@ public sealed class SystemThemeManager : IDisposable
             Set("PrimaryText", "#17202A");
             Set("SecondaryText", "#5D6875");
             Set("DisabledText", "#98A2AE");
+            Set("DangerText", "#C62836");
             Set("AccentBrush", "#2563A9");
             Set("AccentHoverBrush", "#1E518D");
             Set("SelectionBrush", "#CFE4FA");

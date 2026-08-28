@@ -26,6 +26,9 @@ public partial class App : System.Windows.Application
         var credentials = new WindowsCredentialStore();
         var client = new ProviderClient();
         _coordinator = new BalanceCoordinator(store, credentials, client);
+        var supportedMode = ResolveDisplayMode(_coordinator.State.IslandDisplayMode);
+        if (supportedMode != _coordinator.State.IslandDisplayMode)
+            _coordinator.SetIslandDisplayMode(supportedMode);
 
         _mainWindow = new MainWindow(_coordinator)
         {
@@ -43,7 +46,7 @@ public partial class App : System.Windows.Application
         };
 
         CreateTrayIcon();
-        _islandHealthTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        _islandHealthTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
         _islandHealthTimer.Tick += (_, _) => EnsureIslandHealthy();
         _islandHealthTimer.Start();
         _coordinator.AlertRaised += (_, alert) => Dispatcher.Invoke(() =>
@@ -93,6 +96,8 @@ public partial class App : System.Windows.Application
         _mainWindow.Activate();
     }
 
+    public void TrackWindow(Window window) => _themeManager?.Track(window);
+
     private void SetIslandVisible(bool visible)
     {
         if (_coordinator is null) return;
@@ -113,11 +118,17 @@ public partial class App : System.Windows.Application
     private void SetIslandDisplayMode(IslandDisplayMode mode)
     {
         if (_coordinator is null) return;
+        mode = ResolveDisplayMode(mode);
         _coordinator.SetIslandDisplayMode(mode);
         _mainWindow?.UpdateIslandControls(_coordinator.State.IslandEnabled, mode);
         CreateIslandWindow();
         _island?.SetDisplayMode(mode);
     }
+
+    private static IslandDisplayMode ResolveDisplayMode(IslandDisplayMode mode) =>
+        OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000)
+            ? IslandDisplayMode.Floating
+            : mode;
 
     private void CreateIslandWindow()
     {

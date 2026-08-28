@@ -22,20 +22,46 @@ public static class AppIconFactory
                 Color.FromArgb(255, 77, 98, 255), Color.FromArgb(255, 111, 56, 220), 35f);
             graphics.FillPath(fill, path);
 
-            using var pen = new Pen(Color.FromArgb(235, 255, 255, 255), Math.Max(2f, size * .07f))
+            // A small floating island and two water lines; no letterform, so it stays
+            // recognizable in the title bar and notification area at 16–20 px.
+            using var sun = new SolidBrush(Color.FromArgb(235, 137, 224, 255));
+            graphics.FillEllipse(sun, size * .66f, size * .18f, size * .14f, size * .14f);
+
+            using var island = new GraphicsPath();
+            island.StartFigure();
+            island.AddBezier(size * .20f, size * .50f,
+                size * .32f, size * .35f, size * .66f, size * .35f, size * .80f, size * .50f);
+            island.AddBezier(size * .80f, size * .50f,
+                size * .67f, size * .57f, size * .33f, size * .57f, size * .20f, size * .50f);
+            island.CloseFigure();
+            using var islandFill = new SolidBrush(Color.FromArgb(245, 255, 255, 255));
+            graphics.FillPath(islandFill, island);
+
+            using var underside = new GraphicsPath();
+            underside.AddPolygon(new[]
+            {
+                new PointF(size * .29f, size * .53f),
+                new PointF(size * .71f, size * .53f),
+                new PointF(size * .57f, size * .68f),
+                new PointF(size * .43f, size * .68f)
+            });
+            using var undersideFill = new LinearGradientBrush(
+                new RectangleF(size * .29f, size * .52f, size * .42f, size * .17f),
+                Color.FromArgb(220, 204, 210, 255), Color.FromArgb(60, 129, 104, 238), 90f);
+            graphics.FillPath(undersideFill, underside);
+
+            using var pen = new Pen(Color.FromArgb(225, 191, 239, 255), Math.Max(1.4f, size * .045f))
             {
                 StartCap = LineCap.Round,
                 EndCap = LineCap.Round,
                 LineJoin = LineJoin.Round
             };
-            var left = size * .30f;
-            var top = size * .23f;
-            var mid = size * .50f;
-            var right = size * .70f;
-            var bottom = size * .76f;
-            graphics.DrawLine(pen, left, top, left, bottom);
-            graphics.DrawBezier(pen, left, top, right, top, right, mid, left, mid);
-            graphics.DrawBezier(pen, left, mid, right, mid, right, bottom, left, bottom);
+            graphics.DrawBezier(pen, size * .20f, size * .76f,
+                size * .34f, size * .70f, size * .43f, size * .82f, size * .56f, size * .76f);
+            graphics.DrawBezier(pen, size * .56f, size * .76f,
+                size * .67f, size * .71f, size * .72f, size * .77f, size * .80f, size * .74f);
+            graphics.DrawBezier(pen, size * .30f, size * .86f,
+                size * .42f, size * .82f, size * .56f, size * .90f, size * .70f, size * .85f);
         }
 
         var handle = bitmap.GetHicon();

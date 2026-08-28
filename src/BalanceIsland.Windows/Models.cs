@@ -44,6 +44,22 @@ public enum IslandDisplayMode
     TaskbarEmbedded
 }
 
+public enum IslandPositionPreset
+{
+    Left,
+    Center,
+    Right,
+    Custom
+}
+
+public enum IslandSizePreset
+{
+    Compact,
+    Standard,
+    Large,
+    Custom
+}
+
 public enum CredentialSource
 {
     WindowsCredentialManager,
@@ -94,6 +110,7 @@ public sealed class Account
     public Provider Provider { get; set; }
     public string Label { get; set; } = "";
     public string KeySuffix { get; set; } = "";
+    public bool IsEnabled { get; set; } = true;
     public int RefreshIntervalMinutes { get; set; }
     public bool ShowInIsland { get; set; } = true;
     public bool AlertEnabled { get; set; } = true;
@@ -197,10 +214,17 @@ public sealed class AppState
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public IslandDisplayMode IslandDisplayMode { get; set; } = IslandDisplayMode.Floating;
     public bool IslandEditMode { get; set; }
-    public double IslandWidth { get; set; } = 310;
-    public double IslandHeight { get; set; } = 28;
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public IslandPositionPreset IslandPositionPreset { get; set; } = IslandPositionPreset.Left;
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public IslandSizePreset IslandSizePreset { get; set; } = IslandSizePreset.Standard;
+    public double IslandWidth { get; set; } = 225;
+    public double IslandHeight { get; set; } = 38;
+    public double IslandCustomLeftDip { get; set; }
+    public double IslandCustomTopDip { get; set; }
     public double IslandEditLeft { get; set; } = double.NaN;
     public double IslandEditTop { get; set; } = double.NaN;
+    public int IslandLayoutVersion { get; set; }
     public bool EnvironmentAutoImportEnabled { get; set; }
 }
 

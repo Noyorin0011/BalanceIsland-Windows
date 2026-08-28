@@ -12,7 +12,7 @@
 
         <StackPanel Grid.Row="0" Margin="0,0,0,16">
             <TextBlock Text="Balance Island" FontSize="28" FontWeight="SemiBold" />
-            <TextBlock Text="Windows 任务栏 AI API 余额监控 · v0.2.0"
+            <TextBlock Text="Windows 任务栏 AI API 余额监控 · v0.2.1"
                        Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0" />
         </StackPanel>
 
@@ -65,7 +65,8 @@
                     </Border>
                     <DataGrid x:Name="AccountsGrid" Grid.Row="2" AutoGenerateColumns="False" IsReadOnly="True"
                               HeadersVisibility="Column" GridLinesVisibility="Horizontal" SelectionMode="Single"
-                              SelectionUnit="FullRow" Background="{DynamicResource CardBackground}" BorderThickness="0">
+                              SelectionUnit="FullRow" Background="{DynamicResource CardBackground}" BorderThickness="0"
+                              SelectionChanged="AccountsGrid_SelectionChanged">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Provider" Binding="{Binding Provider}" Width="125" />
                             <DataGridTextColumn Header="账户" Binding="{Binding Label}" Width="150" />
@@ -76,7 +77,12 @@
                         </DataGrid.Columns>
                     </DataGrid>
                     <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-                        <Button Content="删除所选" Click="DeleteSelected_Click" />
+                        <Button x:Name="EnableAccountButton" Content="启用/停用" Click="ToggleSelectedAccount_Click"
+                                IsEnabled="False" MinWidth="92" />
+                        <Button x:Name="EditAccountButton" Content="编辑" Click="EditSelectedAccount_Click"
+                                IsEnabled="False" MinWidth="76" />
+                        <Button x:Name="DeleteAccountButton" Content="删除所选" Click="DeleteSelected_Click"
+                                Foreground="{DynamicResource DangerText}" IsEnabled="False" MinWidth="92" />
                     </StackPanel>
                 </Grid>
             </TabItem>
@@ -152,7 +158,7 @@
                         </Border>
 
                         <TextBlock Text="位置 / 尺寸" FontSize="18" FontWeight="SemiBold" />
-                        <TextBlock Text="正常模式固定并点击穿透；开启编辑后浮岛会脱离任务栏层级并提升到任务栏上方，可拖动与缩放。"
+                        <TextBlock Text="可选择任务栏位置和尺寸预设。开启编辑后直接拖动浮岛或拖拽边缘缩放；关闭后固定、鼠标穿透，全屏时自动隐藏。"
                                    Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,2,0,10" />
                         <Border Background="{DynamicResource CardBackground}" CornerRadius="10" Padding="16" Margin="0,0,0,16">
                             <StackPanel>
@@ -170,9 +176,15 @@
                                 <CheckBox x:Name="EditIslandBox" Content="开启编辑浮岛（拖动 / 缩放）"
                                           Checked="EditIslandBox_Changed" Unchecked="EditIslandBox_Changed" Margin="0,14,0,10" />
                                 <WrapPanel>
+                                    <StackPanel Width="190" Margin="0,0,12,0">
+                                        <TextBlock Text="位置预设" />
+                                        <ComboBox x:Name="PositionPresetBox" DisplayMemberPath="Display" SelectedValuePath="Value"
+                                                  SelectionChanged="PositionPresetBox_SelectionChanged" />
+                                    </StackPanel>
                                     <StackPanel Width="170" Margin="0,0,12,0">
                                         <TextBlock Text="尺寸预设" />
-                                        <ComboBox x:Name="SizePresetBox" DisplayMemberPath="Display" />
+                                        <ComboBox x:Name="SizePresetBox" DisplayMemberPath="Display" SelectedValuePath="Value"
+                                                  SelectionChanged="SizePresetBox_SelectionChanged" />
                                     </StackPanel>
                                     <StackPanel Width="130" Margin="0,0,12,0">
                                         <TextBlock Text="宽度" />
@@ -182,13 +194,13 @@
                                         <TextBlock Text="高度" />
                                         <TextBox x:Name="IslandHeightBox" />
                                     </StackPanel>
-                                    <Button Content="应用尺寸" Click="ApplyIslandSize_Click" VerticalAlignment="Bottom" />
+                                    <Button Content="应用自定义尺寸" Click="ApplyIslandSize_Click" VerticalAlignment="Bottom" />
                                 </WrapPanel>
                             </StackPanel>
                         </Border>
 
                         <TextBlock Text="文字与外观" FontSize="18" FontWeight="SemiBold" />
-                        <TextBlock Text="当前沿用系统亮/暗主题与高 DPI；余额正常、接近警告线、严重和查询错误会使用不同文字状态色。浮岛保持紧凑无额外背景框。"
+                        <TextBlock Text="浮岛使用透明无背景的白色双行文字，左侧显示与 Android 版同源的 Provider 矢量图标；按任务栏显示器 DPI 定位与缩放。"
                                    Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" />
                     </StackPanel>
                 </ScrollViewer>
@@ -216,22 +228,29 @@
             </TabItem>
 
             <TabItem Header="刷新与通知">
-                <StackPanel Margin="14">
-                    <TextBlock Text="刷新与通知" FontSize="18" FontWeight="SemiBold" />
-                    <TextBlock Text="每个 Provider 使用自己的推荐刷新周期，也可在添加账户时覆盖。遇到 429 会指数退避；余额告警通过 Windows 托盘通知显示。"
-                               Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,2,0,14" />
-                    <Border Background="{DynamicResource CardBackground}" CornerRadius="10" Padding="16">
-                        <StackPanel>
-                            <TextBlock Text="运行" FontSize="16" FontWeight="SemiBold" />
-                            <TextBlock Text="关闭主窗口后应用继续驻留托盘；全屏应用占满显示器时自动隐藏浮岛，退出全屏后恢复。"
-                                       Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,3,0,12" />
-                            <StackPanel Orientation="Horizontal">
-                                <Button Content="立即刷新全部账户" Click="Refresh_Click" />
-                                <Button x:Name="IslandButton" Content="隐藏任务栏浮岛" Click="ToggleIsland_Click" />
+                <Grid Margin="14">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <StackPanel Grid.Row="0">
+                        <TextBlock Text="刷新与通知" FontSize="18" FontWeight="SemiBold" />
+                        <TextBlock Text="每个 Provider 使用自己的推荐刷新周期，也可在添加账户时覆盖。遇到 429 会指数退避；余额告警通过 Windows 托盘通知显示。"
+                                   Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,2,0,14" />
+                        <Border Background="{DynamicResource CardBackground}" CornerRadius="10" Padding="16">
+                            <StackPanel>
+                                <TextBlock Text="运行" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock Text="关闭主窗口后应用继续驻留托盘；全屏应用占满显示器时自动隐藏浮岛，退出全屏后恢复。"
+                                           Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,3,0,0" />
                             </StackPanel>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
+                        </Border>
+                    </StackPanel>
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                        <Button Content="立即刷新全部账户" Click="Refresh_Click" />
+                        <Button x:Name="IslandButton" Content="隐藏任务栏浮岛" Click="ToggleIsland_Click" />
+                    </StackPanel>
+                </Grid>
             </TabItem>
         </TabControl>
 
