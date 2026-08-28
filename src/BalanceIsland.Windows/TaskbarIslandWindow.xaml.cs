@@ -139,14 +139,14 @@ public partial class TaskbarIslandWindow : Window
 
     private void Next()
     {
-        var count = _coordinator.CurrentSnapshots.Count;
+        var count = IslandAccountSelection.VisibleSnapshots(_coordinator).Count;
         _index = count == 0 ? 0 : (_index + 1) % count;
         Render();
     }
 
     private void Render()
     {
-        var snapshots = _coordinator.CurrentSnapshots;
+        var snapshots = IslandAccountSelection.VisibleSnapshots(_coordinator);
         IslandBorder.BorderThickness = _coordinator.State.IslandEditMode
             ? new Thickness(2) : new Thickness(1);
         IslandBorder.BorderBrush = _coordinator.State.IslandEditMode
@@ -157,7 +157,7 @@ public partial class TaskbarIslandWindow : Window
         {
             IslandText.Text = _coordinator.State.IslandEditMode
                 ? "Balance Island · 编辑模式（拖动 / 缩放）"
-                : "Balance Island · 请添加账户";
+                : "Balance Island · 没有启用显示的账户";
             IslandText.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "PrimaryText");
             return;
         }
@@ -201,15 +201,20 @@ public partial class TaskbarIslandWindow : Window
             Topmost = true;
             ShowActivated = true;
             ResizeMode = ResizeMode.CanResizeWithGrip;
-            if (!_layoutAppliedOnce || !double.IsFinite(_coordinator.State.IslandEditLeft) ||
-                !double.IsFinite(_coordinator.State.IslandEditTop))
-                PositionEditAboveTaskbar();
-            else if (!_dragging && !_layoutAppliedOnce)
+            if (!_layoutAppliedOnce)
             {
-                Left = _coordinator.State.IslandEditLeft;
-                Top = _coordinator.State.IslandEditTop;
+                if (double.IsFinite(_coordinator.State.IslandEditLeft) &&
+                    double.IsFinite(_coordinator.State.IslandEditTop))
+                {
+                    Left = _coordinator.State.IslandEditLeft;
+                    Top = _coordinator.State.IslandEditTop;
+                }
+                else
+                {
+                    PositionEditAboveTaskbar();
+                }
+                _layoutAppliedOnce = true;
             }
-            _layoutAppliedOnce = true;
             ReportModeStatus("编辑模式：浮岛已提升到任务栏上方，可拖动和缩放");
             return;
         }
