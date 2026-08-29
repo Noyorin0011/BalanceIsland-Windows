@@ -126,17 +126,26 @@ public static class IslandDisplayGroups
                 visualState);
         }
 
+        var errorItems = items
+            .Where(item => item.Status == SnapshotStatus.Error)
+            .ToArray();
+        var pendingItems = items
+            .Where(item => item.Status == SnapshotStatus.NotConfigured)
+            .ToArray();
         var monetaryItems = items
+            .Where(item => item.Status is not SnapshotStatus.Error and not SnapshotStatus.NotConfigured)
             .Where(item => item.BalanceAmount is not null || item.TodayUsedAmount is not null)
             .ToArray();
 
         if (monetaryItems.Length == 0)
         {
             var healthy = items.Count(item => item.Status is not SnapshotStatus.Error and not SnapshotStatus.NotConfigured);
+            var keyCount = $"有效 {healthy} 个 Key · 错误 {errorItems.Length} 个 Key";
+            if (pendingItems.Length > 0) keyCount += $" · 未刷新 {pendingItems.Length} 个";
             return DisplayItem(
                 provider,
                 group.Name,
-                $"有效 {healthy} 个 Key · 错误 {items.Length - healthy} 个 Key",
+                keyCount,
                 "",
                 null,
                 null,
@@ -169,6 +178,10 @@ public static class IslandDisplayGroups
         var secondary = usage is null
             ? ""
             : $"今日 {BalanceSnapshot.CurrencySymbol(currency)}{usage:0.00}";
+        if (errorItems.Length > 0)
+            secondary = secondary.Length == 0
+                ? $"错误 {errorItems.Length} 个 Key"
+                : $"{secondary} · 错误 {errorItems.Length} 个 Key";
         return DisplayItem(
             provider,
             group.Name,

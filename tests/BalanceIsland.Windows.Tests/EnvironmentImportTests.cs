@@ -299,6 +299,58 @@ public sealed class EnvironmentImportTests
     }
 
     [Fact]
+    public async Task Provider_error_message_containing_the_secret_is_redacted_from_state_and_snapshot()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "BalanceIsland.Tests", Guid.NewGuid().ToString("N"));
+        var variableName = $"BALANCE_ISLAND_ERROR_{Guid.NewGuid():N}";
+        var account = new Account
+        {
+            Id = "account",
+            Provider = Provider.OpenRouter,
+            KeySuffix = "1234",
+            CredentialSource = CredentialSource.EnvironmentVariable,
+            EnvironmentVariableName = variableName
+        };
+        var store = new AppDataStore(directory);
+        store.Save(new AppState
+        {
+            SafeKeySuffixVersion = 1,
+            Accounts = [account],
+            Snapshots = new Dictionary<string, BalanceSnapshot>
+            {
+                [account.Id] = new()
+                {
+                    Provider = account.Provider,
+                    CredentialId = account.Id,
+                    KeySuffix = account.KeySuffix
+                }
+            }
+        });
+        const string rotatedSecret = "sk-or-v1-secret9876";
+        var client = new ErrorEchoingProviderClient(rotatedSecret);
+        Environment.SetEnvironmentVariable(variableName, rotatedSecret, EnvironmentVariableTarget.Process);
+        try
+        {
+            using var coordinator = new BalanceCoordinator(store, new WindowsCredentialStore(), client);
+
+            await coordinator.RefreshDueAsync(force: true, targetCredentialId: account.Id);
+
+            var snapshot = coordinator.State.Snapshots[account.Id];
+            Assert.Equal(SnapshotStatus.Error, snapshot.Status);
+            Assert.DoesNotContain(rotatedSecret, snapshot.SecondaryText, StringComparison.Ordinal);
+            Assert.DoesNotContain(rotatedSecret, snapshot.ToString(), StringComparison.Ordinal);
+            // In-memory text shows the irreversible placeholder.
+            Assert.Contains("••••", snapshot.SecondaryText, StringComparison.Ordinal);
+            var json = File.ReadAllText(Path.Combine(directory, "state.json"));
+            Assert.DoesNotContain(rotatedSecret, json, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variableName, null, EnvironmentVariableTarget.Process);
+        }
+    }
+
+    [Fact]
     public void Rescan_updates_an_existing_environment_account_suffix_without_creating_a_duplicate()
     {
         var account = new Account
@@ -404,5 +456,11 @@ public sealed class EnvironmentImportTests
                 UpdatedAt = DateTimeOffset.UtcNow
             });
         }
+    }
+
+    private sealed class ErrorEchoingProviderClient(string echoedSecret) : ProviderClient
+    {
+        public override Task<BalanceSnapshot> FetchAsync(ApiCredential credential, CancellationToken token) =>
+            throw new ProviderApiException($"HTTP 401: invalid key {echoedSecret}");
     }
 }

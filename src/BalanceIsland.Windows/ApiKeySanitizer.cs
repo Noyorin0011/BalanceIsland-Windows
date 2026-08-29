@@ -35,4 +35,19 @@ public static partial class ApiKeySanitizer
     public static string MaskSuffix(string? safeSuffix) => safeSuffix?.Length == 4
         ? $"{IrreversiblePlaceholder}{safeSuffix}"
         : IrreversiblePlaceholder;
+
+    /// <summary>
+    /// Removes any occurrence of the supplied secret and any recognized key pattern
+    /// from an arbitrary text (e.g. a Provider error message) so it can never leak
+    /// into state, UI or notifications.
+    /// </summary>
+    public static string RedactSecret(string? text, string? secret)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return text ?? "";
+
+        var redacted = text;
+        if (!string.IsNullOrWhiteSpace(secret))
+            redacted = redacted.Replace(secret, IrreversiblePlaceholder, StringComparison.Ordinal);
+        return KnownKey().Replace(redacted, IrreversiblePlaceholder);
+    }
 }
