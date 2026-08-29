@@ -333,13 +333,13 @@ public partial class MainWindow : Window
     private static void SetColorPreview(Border preview, string color)
     {
         if (IslandColorPalettes.TryNormalizeColor(color, out var normalized) &&
-            ColorConverter.ConvertFromString(normalized) is Color parsed)
+            System.Windows.Media.ColorConverter.ConvertFromString(normalized) is System.Windows.Media.Color parsed)
         {
             preview.Background = new SolidColorBrush(parsed);
             return;
         }
 
-        preview.Background = Brushes.Transparent;
+        preview.Background = System.Windows.Media.Brushes.Transparent;
     }
 
     private void DisplayGroupBox_SelectionChanged(object sender, SelectionChangedEventArgs e)

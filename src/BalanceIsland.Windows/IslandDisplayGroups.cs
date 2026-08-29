@@ -163,9 +163,9 @@ public static class IslandDisplayGroups
 
         var currency = currencies[0];
         var balanceItems = monetaryItems.Where(item => item.BalanceAmount is not null).ToArray();
-        var balance = balanceItems.Length == 0 ? null : balanceItems.Sum(item => item.BalanceAmount!.Value);
+        var balance = balanceItems.Length == 0 ? (double?)null : balanceItems.Sum(item => item.BalanceAmount!.Value);
         var usageItems = monetaryItems.Where(item => item.TodayUsedAmount is not null).ToArray();
-        var usage = usageItems.Length == 0 ? null : usageItems.Sum(item => item.TodayUsedAmount!.Value);
+        var usage = usageItems.Length == 0 ? (double?)null : usageItems.Sum(item => item.TodayUsedAmount!.Value);
         var secondary = usage is null
             ? ""
             : $"今日 {BalanceSnapshot.CurrencySymbol(currency)}{usage:0.00}";
