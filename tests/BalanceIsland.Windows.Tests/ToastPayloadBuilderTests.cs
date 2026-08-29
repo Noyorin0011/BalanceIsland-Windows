@@ -1,3 +1,4 @@
+using Xunit;
 namespace BalanceIsland.Windows.Tests;
 
 public sealed class ToastPayloadBuilderTests

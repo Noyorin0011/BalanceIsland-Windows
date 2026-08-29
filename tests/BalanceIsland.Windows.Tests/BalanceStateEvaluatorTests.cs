@@ -1,3 +1,4 @@
+using Xunit;
 using BalanceIsland.Windows;
 
 namespace BalanceIsland.Windows.Tests;

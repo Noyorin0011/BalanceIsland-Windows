@@ -1,3 +1,4 @@
+using Xunit;
 using BalanceIsland.Windows;
 
 namespace BalanceIsland.Windows.Tests;
@@ -56,9 +57,9 @@ public sealed class EnvironmentImportTests
                 new EnvironmentCredentialCandidate(Provider.OpenRouter, secondVariable, "second-secret")
             ]);
 
-            await client.FirstRequestStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+            await client.FirstRequestStarted.WaitAsync(TimeSpan.FromSeconds(1));
             client.CompleteFirstRequest();
-            await client.SecondRequestStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+            await client.SecondRequestStarted.WaitAsync(TimeSpan.FromSeconds(1));
             await WaitUntilAsync(() => coordinator.State.Snapshots.Values.Count == 2 &&
                 coordinator.State.Snapshots.Values.All(snapshot => snapshot.PrimaryText == "已刷新"));
 
