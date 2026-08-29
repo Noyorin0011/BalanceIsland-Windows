@@ -590,8 +590,8 @@ public sealed class BalanceCoordinator : IDisposable
             // Delivery is at-most-once per persisted transition: the application attempts
             // native Toast delivery and, on failure, one tray fallback without reopening it.
             _store.Save(State);
-            foreach (var alert in deliverableAlerts)
-                AlertRaised?.Invoke(this, alert);
+            foreach (var alertEvent in deliverableAlerts)
+                AlertRaised?.Invoke(this, alertEvent);
         }
     }
 
