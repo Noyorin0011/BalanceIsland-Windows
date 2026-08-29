@@ -72,7 +72,10 @@ public static class EnvironmentCredentialDiscovery
             try
             {
                 var value = Environment.GetEnvironmentVariable(name, target);
-                if (!string.IsNullOrWhiteSpace(value)) return value;
+                if (string.IsNullOrWhiteSpace(value)) continue;
+
+                var key = ApiKeySanitizer.Clean(value);
+                if (!string.IsNullOrWhiteSpace(key)) return key;
             }
             catch
             {

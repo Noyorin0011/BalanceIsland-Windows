@@ -186,6 +186,118 @@ public sealed class EnvironmentImportTests
         }
     }
 
+    [Theory]
+    [InlineData("Bearer abcd")]
+    [InlineData("'abcd'")]
+    [InlineData("\"abcd\"")]
+    public async Task Environment_rotation_to_a_short_secret_requests_the_cleaned_key_and_retains_no_suffix(string rotatedValue)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "BalanceIsland.Tests", Guid.NewGuid().ToString("N"));
+        var variableName = $"BALANCE_ISLAND_ROTATION_{Guid.NewGuid():N}";
+        var account = new Account
+        {
+            Id = "account",
+            Provider = Provider.OpenRouter,
+            KeySuffix = "1234",
+            CredentialSource = CredentialSource.EnvironmentVariable,
+            EnvironmentVariableName = variableName
+        };
+        var store = new AppDataStore(directory);
+        store.Save(new AppState
+        {
+            SafeKeySuffixVersion = 1,
+            Accounts = [account],
+            Snapshots = new Dictionary<string, BalanceSnapshot>
+            {
+                [account.Id] = new()
+                {
+                    Provider = account.Provider,
+                    CredentialId = account.Id,
+                    KeySuffix = account.KeySuffix
+                }
+            }
+        });
+        var client = new CapturingProviderClient();
+        Environment.SetEnvironmentVariable(variableName, rotatedValue, EnvironmentVariableTarget.Process);
+        try
+        {
+            using var coordinator = new BalanceCoordinator(store, new WindowsCredentialStore(), client);
+
+            await coordinator.RefreshDueAsync(force: true, targetCredentialId: account.Id);
+
+            // The provider must receive only the cleaned key, never the raw "Bearer " / quoted value.
+            Assert.Equal("abcd", client.RequestedSecret);
+            Assert.DoesNotContain("Bearer ", client.RequestedSecret, StringComparison.Ordinal);
+            // A 4-char secret must not be retained anywhere as a suffix.
+            Assert.Equal("", coordinator.State.Accounts.Single().KeySuffix);
+            Assert.Equal("", coordinator.State.Snapshots[account.Id].KeySuffix);
+            var json = File.ReadAllText(Path.Combine(directory, "state.json"));
+            Assert.DoesNotContain("abcd", json, StringComparison.Ordinal);
+            // Notification context must be the irreversible placeholder only.
+            var context = AccountContextFormatter.Format(
+                account.Label,
+                ApiKeySanitizer.MaskSuffix(coordinator.State.Accounts.Single().KeySuffix));
+            Assert.DoesNotContain("abcd", context, StringComparison.Ordinal);
+            Assert.Contains(ApiKeySanitizer.IrreversiblePlaceholder, context, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variableName, null, EnvironmentVariableTarget.Process);
+        }
+    }
+
+    [Fact]
+    public async Task Environment_rotation_with_bearer_prefix_requests_the_cleaned_long_key_and_keeps_only_its_safe_suffix()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "BalanceIsland.Tests", Guid.NewGuid().ToString("N"));
+        var variableName = $"BALANCE_ISLAND_ROTATION_{Guid.NewGuid():N}";
+        var account = new Account
+        {
+            Id = "account",
+            Provider = Provider.OpenRouter,
+            KeySuffix = "1234",
+            CredentialSource = CredentialSource.EnvironmentVariable,
+            EnvironmentVariableName = variableName
+        };
+        var store = new AppDataStore(directory);
+        store.Save(new AppState
+        {
+            SafeKeySuffixVersion = 1,
+            Accounts = [account],
+            Snapshots = new Dictionary<string, BalanceSnapshot>
+            {
+                [account.Id] = new()
+                {
+                    Provider = account.Provider,
+                    CredentialId = account.Id,
+                    KeySuffix = account.KeySuffix
+                }
+            }
+        });
+        var client = new CapturingProviderClient();
+        Environment.SetEnvironmentVariable(variableName, "Bearer abcde", EnvironmentVariableTarget.Process);
+        try
+        {
+            using var coordinator = new BalanceCoordinator(store, new WindowsCredentialStore(), client);
+
+            await coordinator.RefreshDueAsync(force: true, targetCredentialId: account.Id);
+
+            // The provider receives the cleaned key without the Bearer prefix...
+            Assert.Equal("abcde", client.RequestedSecret);
+            Assert.DoesNotContain("Bearer ", client.RequestedSecret, StringComparison.Ordinal);
+            // ...and only the last four characters of the cleaned key are retained.
+            Assert.Equal("bcde", coordinator.State.Accounts.Single().KeySuffix);
+            Assert.Equal("bcde", coordinator.State.Snapshots[account.Id].KeySuffix);
+            var json = File.ReadAllText(Path.Combine(directory, "state.json"));
+            Assert.Contains("bcde", json, StringComparison.Ordinal);
+            Assert.DoesNotContain("abcde", json, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variableName, null, EnvironmentVariableTarget.Process);
+        }
+    }
+
     [Fact]
     public void Rescan_updates_an_existing_environment_account_suffix_without_creating_a_duplicate()
     {
