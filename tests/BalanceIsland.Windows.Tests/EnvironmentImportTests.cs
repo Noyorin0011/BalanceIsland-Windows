@@ -25,16 +25,28 @@ public sealed class EnvironmentImportTests
     [Fact]
     public void Import_deduplicates_selected_candidates_by_provider_and_variable()
     {
-        using var coordinator = TestFactory.CreateCoordinator();
-        var first = new EnvironmentCredentialCandidate(
-            Provider.OpenRouter, "ROUTER_KEY", "sk-or-v1-abc1234", "User", "Key prefix");
-        var duplicate = new EnvironmentCredentialCandidate(
-            Provider.OpenRouter, "router_key", "sk-or-v1-different5678", "Machine", "Key prefix");
+        const string variable = "ROUTER_KEY";
+        var previous = Environment.GetEnvironmentVariable(variable, EnvironmentVariableTarget.Process);
+        try
+        {
+            // The imported environment account resolves its key from the live environment
+            // during refresh, so the variable must be set for the suffix to be re-derived.
+            Environment.SetEnvironmentVariable(variable, "sk-or-v1-abc1234", EnvironmentVariableTarget.Process);
+            using var coordinator = TestFactory.CreateCoordinator();
+            var first = new EnvironmentCredentialCandidate(
+                Provider.OpenRouter, variable, "sk-or-v1-abc1234", "User", "Key prefix");
+            var duplicate = new EnvironmentCredentialCandidate(
+                Provider.OpenRouter, "router_key", "sk-or-v1-different5678", "Machine", "Key prefix");
 
-        coordinator.ImportEnvironmentAccounts([first, duplicate]);
+            coordinator.ImportEnvironmentAccounts([first, duplicate]);
 
-        Assert.Single(coordinator.State.Accounts);
-        Assert.Equal("1234", coordinator.State.Accounts[0].KeySuffix);
+            Assert.Single(coordinator.State.Accounts);
+            Assert.Equal("1234", coordinator.State.Accounts[0].KeySuffix);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, previous, EnvironmentVariableTarget.Process);
+        }
     }
 
     [Fact]

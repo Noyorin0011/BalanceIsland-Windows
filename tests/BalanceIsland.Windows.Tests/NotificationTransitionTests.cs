@@ -85,8 +85,8 @@ public sealed class NotificationTransitionTests
     {
         var snapshots = new Dictionary<string, BalanceSnapshot>
         {
-            ["warning"] = new() { CredentialId = "warning", Provider = Provider.DeepSeek, Status = SnapshotStatus.Ok },
-            ["critical"] = new() { CredentialId = "critical", Provider = Provider.DeepSeek, Status = SnapshotStatus.Ok }
+            ["warning"] = new() { CredentialId = "warning", Provider = Provider.DeepSeek, Status = SnapshotStatus.Ok, BalanceAmount = 100 },
+            ["critical"] = new() { CredentialId = "critical", Provider = Provider.DeepSeek, Status = SnapshotStatus.Ok, BalanceAmount = 10 }
         };
         var visualStates = new Dictionary<string, BalanceVisualState>
         {
