@@ -6,6 +6,7 @@ using System.Windows.Interop;
 using System.Windows.Threading;
 using MediaBrushes = System.Windows.Media.Brushes;
 using MediaColor = System.Windows.Media.Color;
+using MediaColorConverter = System.Windows.Media.ColorConverter;
 using MediaImageSource = System.Windows.Media.ImageSource;
 using MediaSolidColorBrush = System.Windows.Media.SolidColorBrush;
 using MediaVisualTreeHelper = System.Windows.Media.VisualTreeHelper;
@@ -265,15 +266,16 @@ public partial class TaskbarIslandWindow : Window
 
     private void Next()
     {
-        var count = IslandAccountSelection.VisibleSnapshots(_coordinator).Count;
+        var count = IslandAccountSelection.VisibleItems(_coordinator).Count;
         _index = count == 0 ? 0 : (_index + 1) % count;
         Render();
     }
 
     private void Render()
     {
-        var snapshots = IslandAccountSelection.VisibleSnapshots(_coordinator);
-        if (snapshots.Count == 0)
+        var items = IslandAccountSelection.VisibleItems(_coordinator);
+        var palette = IslandColorPalettes.Resolve(_coordinator.State);
+        if (items.Count == 0)
         {
             ProviderIconImage.Source = null;
             ProviderIconImage.Visibility = Visibility.Collapsed;
@@ -283,43 +285,67 @@ public partial class TaskbarIslandWindow : Window
             ProviderIconBackground.Padding = new Thickness(0);
             IslandTitleText.Text = "Balance Island";
             IslandUsageText.Text = "没有启用显示的账户";
+            SetTextColor(palette.Normal);
             return;
         }
 
-        if (_index >= snapshots.Count) _index = 0;
-        var snapshot = snapshots[_index];
-        ProviderIconImage.Source = (MediaImageSource)FindResource($"ProviderIcon.{snapshot.Provider}");
-        var iconSize = snapshot.Provider switch
+        if (_index >= items.Count) _index = 0;
+        var item = items[_index];
+        if (item.Provider is not { } provider || string.IsNullOrWhiteSpace(item.IconResourceKey))
         {
-            Provider.MiMo or Provider.Gemini => 16d,
-            Provider.OpenAI or Provider.Moonshot or Provider.XAI => 16.5d,
-            _ => 17d
-        };
-        ProviderIconImage.Width = iconSize;
-        ProviderIconImage.Height = iconSize;
-        ProviderIconImage.Visibility = Visibility.Visible;
-        ProviderIconFallbackText.Visibility = Visibility.Collapsed;
-        ProviderIconBackground.Background = snapshot.Provider switch
+            ProviderIconImage.Source = null;
+            ProviderIconImage.Visibility = Visibility.Collapsed;
+            ProviderIconFallbackText.Visibility = Visibility.Visible;
+            ProviderIconBackground.Background = new MediaSolidColorBrush(MediaColor.FromRgb(255, 190, 70));
+            ProviderIconBackground.Padding = new Thickness(0);
+        }
+        else
         {
-            Provider.OpenAI or Provider.XAI =>
-                new MediaSolidColorBrush(MediaColor.FromRgb(20, 22, 27)),
-            Provider.Moonshot => MediaBrushes.White,
-            _ => MediaBrushes.Transparent
-        };
-        ProviderIconBackground.Padding = snapshot.Provider is
-            Provider.OpenAI or Provider.XAI or Provider.Moonshot
-                ? new Thickness(2)
-                : new Thickness(0);
+            ProviderIconImage.Source = (MediaImageSource)FindResource(item.IconResourceKey);
+            var iconSize = provider switch
+            {
+                Provider.MiMo or Provider.Gemini => 16d,
+                Provider.OpenAI or Provider.Moonshot or Provider.XAI => 16.5d,
+                _ => 17d
+            };
+            ProviderIconImage.Width = iconSize;
+            ProviderIconImage.Height = iconSize;
+            ProviderIconImage.Visibility = Visibility.Visible;
+            ProviderIconFallbackText.Visibility = Visibility.Collapsed;
+            ProviderIconBackground.Background = provider switch
+            {
+                Provider.OpenAI or Provider.XAI =>
+                    new MediaSolidColorBrush(MediaColor.FromRgb(20, 22, 27)),
+                Provider.Moonshot => MediaBrushes.White,
+                _ => MediaBrushes.Transparent
+            };
+            ProviderIconBackground.Padding = provider is
+                Provider.OpenAI or Provider.XAI or Provider.Moonshot
+                    ? new Thickness(2)
+                    : new Thickness(0);
+        }
 
-        IslandTitleText.Text = $"{snapshot.Provider.DisplayName()} · {snapshot.AccountDisplayLabel}";
-        var today = snapshot.TodayUsedAmount is null
-            ? ""
-            : $" · 今日 {BalanceSnapshot.CurrencySymbol(snapshot.CurrencyCode)}{snapshot.TodayUsedAmount:0.00}";
-        var detail = today.Length == 0 && !string.IsNullOrWhiteSpace(snapshot.SecondaryText)
-            ? $" · {snapshot.SecondaryText}"
-            : today;
-        IslandUsageText.Text = $"{snapshot.PrimaryText}{detail}";
+        IslandTitleText.Text = item.Title;
+        IslandUsageText.Text = string.IsNullOrWhiteSpace(item.SecondaryText)
+            ? item.PrimaryText
+            : $"{item.PrimaryText} · {item.SecondaryText}";
+        SetTextColor(ColorFor(item.VisualState, palette));
     }
+
+    private void SetTextColor(string color)
+    {
+        var brush = new MediaSolidColorBrush((MediaColor)MediaColorConverter.ConvertFromString(color));
+        IslandTitleText.Foreground = brush;
+        IslandUsageText.Foreground = brush;
+    }
+
+    private static string ColorFor(BalanceVisualState state, IslandColorPalette palette) => state switch
+    {
+        BalanceVisualState.Warning15 => palette.Warning15,
+        BalanceVisualState.Anomaly => palette.Anomaly,
+        BalanceVisualState.Critical => palette.Critical,
+        _ => palette.Normal
+    };
 
     private void ApplyDisplayMode()
     {

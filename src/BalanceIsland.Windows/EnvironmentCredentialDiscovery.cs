@@ -2,69 +2,142 @@ namespace BalanceIsland.Windows;
 
 public static class EnvironmentCredentialDiscovery
 {
-    private static readonly IReadOnlyDictionary<Provider, string[]> Names =
-        new Dictionary<Provider, string[]>
+    public static IReadOnlyList<EnvironmentCredentialCandidate> Scan(IEnumerable<EnvironmentVariableEntry> entries)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+
+        var candidates = new List<EnvironmentCredentialCandidate>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in entries)
         {
-            [Provider.DeepSeek] = ["DEEPSEEK_API_KEY"],
-            [Provider.OpenAI] = ["OPENAI_ADMIN_KEY", "OPENAI_API_KEY"],
-            [Provider.OpenRouter] = ["OPENROUTER_API_KEY"],
-            [Provider.SiliconFlow] = ["SILICONFLOW_API_KEY"],
-            [Provider.Moonshot] = ["MOONSHOT_API_KEY", "KIMI_API_KEY"],
-            [Provider.MiMo] = ["MIMO_API_KEY", "XIAOMI_MIMO_API_KEY"],
-            [Provider.Anthropic] = ["ANTHROPIC_API_KEY"],
-            [Provider.Gemini] = ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
-            [Provider.XAI] = ["XAI_API_KEY", "GROK_API_KEY"]
-        };
+            if (string.IsNullOrWhiteSpace(entry.Name) || string.IsNullOrWhiteSpace(entry.Value)) continue;
+            if (!seen.Add($"{entry.Scope}\0{entry.Name}")) continue;
+
+            var key = ApiKeySanitizer.Clean(entry.Value);
+            if (string.IsNullOrWhiteSpace(key)) continue;
+
+            var definition = Match(entry.Name, key);
+            if (definition is null && !key.StartsWith("sk-", StringComparison.OrdinalIgnoreCase)) continue;
+
+            candidates.Add(new EnvironmentCredentialCandidate(
+                definition?.Provider,
+                entry.Name,
+                key,
+                entry.Scope,
+                definition is null ? "待选择 Provider" : MatchReason(definition, entry.Name)));
+        }
+        return candidates;
+    }
 
     public static IReadOnlyList<EnvironmentCredentialCandidate> Scan()
     {
-        var result = new List<EnvironmentCredentialCandidate>();
-        foreach (var pair in Names)
+        var entries = new List<EnvironmentVariableEntry>();
+        var namesSeenAtHigherPriority = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var target in new[]
+                 {
+                     EnvironmentVariableTarget.Process,
+                     EnvironmentVariableTarget.User,
+                     EnvironmentVariableTarget.Machine
+                 })
         {
-            foreach (var name in pair.Value)
+            try
             {
-                var value = Read(name);
-                if (string.IsNullOrWhiteSpace(value)) continue;
-                var key = ApiKeySanitizer.Clean(value);
-                if (string.IsNullOrWhiteSpace(key)) continue;
-                result.Add(new EnvironmentCredentialCandidate(pair.Key, name, key));
-                break;
+                var variables = Environment.GetEnvironmentVariables(target);
+                foreach (System.Collections.DictionaryEntry variable in variables)
+                {
+                    if (variable.Key is not string name || variable.Value is not string value ||
+                        string.IsNullOrWhiteSpace(value) || !namesSeenAtHigherPriority.Add(name)) continue;
+                    entries.Add(new EnvironmentVariableEntry(name, value, target.ToString()));
+                }
+            }
+            catch
+            {
+                // User and machine stores can be unavailable or access-restricted.
             }
         }
-        return result;
+        return Scan(entries);
     }
 
     public static string? Read(string? name)
     {
         if (string.IsNullOrWhiteSpace(name)) return null;
-        try
+
+        foreach (var target in new[]
+                 {
+                     EnvironmentVariableTarget.Process,
+                     EnvironmentVariableTarget.User,
+                     EnvironmentVariableTarget.Machine
+                 })
         {
-            var value = Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.Process);
-            if (!string.IsNullOrWhiteSpace(value)) return value;
-            if (OperatingSystem.IsWindows())
+            try
             {
-                value = Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.User);
+                var value = Environment.GetEnvironmentVariable(name, target);
                 if (!string.IsNullOrWhiteSpace(value)) return value;
-                value = Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.Machine);
             }
-            return value;
+            catch
+            {
+                // Continue to the next scope when this one cannot be read.
+            }
         }
-        catch
-        {
-            return null;
-        }
+        return null;
     }
 
-    public static string SupportedVariablesText =>
-        "DeepSeek: DEEPSEEK_API_KEY · OpenAI: OPENAI_ADMIN_KEY / OPENAI_API_KEY · " +
-        "OpenRouter: OPENROUTER_API_KEY · SiliconFlow: SILICONFLOW_API_KEY · " +
-        "Moonshot: MOONSHOT_API_KEY / KIMI_API_KEY · MiMo: MIMO_API_KEY / XIAOMI_MIMO_API_KEY · " +
-        "Anthropic: ANTHROPIC_API_KEY · Gemini: GEMINI_API_KEY / GOOGLE_API_KEY · " +
-        "xAI: XAI_API_KEY / GROK_API_KEY";
+    public static string SupportedVariablesText => string.Join(" · ", ProviderCatalog.All.Select(definition =>
+        $"{definition.DisplayName}: {string.Join(" / ", definition.EnvironmentVariableNames)}"));
 
-    public static string LimitationsText =>
-        "环境变量凭据本身覆盖当前全部 Provider；但 MiMo、Anthropic、Gemini、xAI 当前仅验证 Key，" +
-        "没有可用的官方余额接口。OpenAI 普通 OPENAI_API_KEY 仅验证 Key；余额/组织消费查询需要 OPENAI_ADMIN_KEY（sk-admin-）。";
+    public static string LimitationsText => string.Join(" ", ProviderCatalog.All
+        .Where(definition => !string.IsNullOrWhiteSpace(definition.Limitations))
+        .Select(definition => $"{definition.DisplayName}：{definition.Limitations}"));
+
+    private static ProviderDefinition? Match(string name, string key) =>
+        ProviderCatalog.All.FirstOrDefault(definition => definition.EnvironmentVariableNames
+            .Contains(name, StringComparer.OrdinalIgnoreCase))
+        ?? ProviderCatalog.All.FirstOrDefault(definition => definition.EnvironmentNameKeywords
+            .Any(keyword => name.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
+        ?? ProviderCatalog.All.FirstOrDefault(definition => definition.UniqueKeyPrefixes
+            .Any(prefix => key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)));
+
+    private static string MatchReason(ProviderDefinition definition, string name)
+    {
+        if (definition.EnvironmentVariableNames.Contains(name, StringComparer.OrdinalIgnoreCase)) return "标准变量名";
+        if (definition.EnvironmentNameKeywords.Any(keyword => name.Contains(keyword, StringComparison.OrdinalIgnoreCase))) return "变量名关键词";
+        return "Key 前缀";
+    }
 }
 
-public sealed record EnvironmentCredentialCandidate(Provider Provider, string VariableName, string ApiKey);
+public sealed record EnvironmentVariableEntry(string Name, string Value, string Scope);
+
+public sealed class EnvironmentCredentialCandidate
+{
+    private readonly string _apiKey;
+
+    public EnvironmentCredentialCandidate(Provider? provider, string variableName, string apiKey)
+        : this(provider, variableName, apiKey, "Process", "标准变量名")
+    {
+    }
+
+    public EnvironmentCredentialCandidate(Provider? provider, string variableName, string apiKey, string scope, string matchReason)
+    {
+        Provider = provider;
+        VariableName = variableName;
+        _apiKey = apiKey;
+        Scope = scope;
+        MatchReason = matchReason;
+    }
+
+    public Provider? Provider { get; }
+    public string VariableName { get; }
+    public string Scope { get; }
+    public string MatchReason { get; }
+    public string MaskedKey => ApiKeySanitizer.MaskSecret(_apiKey, revealSafeSuffix: Provider is not null);
+    internal string ApiKey => _apiKey;
+
+    public EnvironmentCredentialCandidate WithProvider(Provider provider) => new(
+        provider,
+        VariableName,
+        _apiKey,
+        Scope,
+        Provider is null ? "用户明确选择" : MatchReason);
+
+    public override string ToString() => $"{(Provider is { } provider ? provider.DisplayName() : "未分类")} · {VariableName} · {Scope} · {MaskedKey} · {MatchReason}";
+}

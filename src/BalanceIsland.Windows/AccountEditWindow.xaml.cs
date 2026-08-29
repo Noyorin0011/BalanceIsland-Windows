@@ -12,8 +12,9 @@ public partial class AccountEditWindow : Window
     public string ApiKey => ApiKeyBox.Password;
     public double? ManualBalance { get; private set; }
     public int RefreshMinutes { get; private set; }
+    public bool ShowInIsland => ShowInIslandBox.IsChecked == true;
 
-    public AccountEditWindow(Account account)
+    public AccountEditWindow(Account account, bool hasActiveDisplayGroup)
     {
         InitializeComponent();
         ProviderTextBox.Text = account.Provider.DisplayName();
@@ -22,6 +23,11 @@ public partial class AccountEditWindow : Window
         RefreshMinutesTextBox.Text = account.RefreshIntervalMinutes == 0
             ? "0"
             : account.RefreshIntervalMinutes.ToString(CultureInfo.CurrentCulture);
+        ShowInIslandBox.IsChecked = account.ShowInIsland;
+        ShowInIslandBox.IsEnabled = !hasActiveDisplayGroup;
+        ShowInIslandHelpText.Text = hasActiveDisplayGroup
+            ? "当前活动分组的成员关系决定浮岛显示；停用分组后可修改此开关。"
+            : "未启用活动分组时，此开关会立即决定账户是否进入默认轮播。";
     }
 
     private void ApiKeyBox_PasswordChanged(object sender, RoutedEventArgs e) =>

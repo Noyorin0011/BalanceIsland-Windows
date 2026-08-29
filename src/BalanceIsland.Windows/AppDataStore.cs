@@ -17,24 +17,39 @@ public sealed class AppDataStore
     };
 
     public AppDataStore()
-    {
-        _directory = Path.Combine(
+        : this(Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "BalanceIsland");
+            "BalanceIsland"))
+    {
+    }
+
+    public AppDataStore(string directory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(directory);
+        _directory = directory;
         _path = Path.Combine(_directory, "state.json");
     }
 
-    public AppState Load()
+    public AppDataLoadResult LoadResult()
     {
         try
         {
-            if (!File.Exists(_path)) return new AppState();
-            return JsonSerializer.Deserialize<AppState>(File.ReadAllText(_path), _json)
-                ?? new AppState();
+            if (!File.Exists(_path))
+                return new AppDataLoadResult(AppStateNormalizer.Normalize(new AppState()), false, null);
+
+            var json = File.ReadAllText(_path);
+            AppStateSemanticValidator.ValidateJsonTokens(json);
+            var state = JsonSerializer.Deserialize<AppState>(json, _json)
+                ?? throw new JsonException("状态文件不包含应用状态。");
+            AppStateSemanticValidator.Validate(state);
+            return new AppDataLoadResult(AppStateNormalizer.Normalize(state), true, null);
         }
-        catch
+        catch (Exception exception)
         {
-            return new AppState();
+            return new AppDataLoadResult(
+                AppStateNormalizer.Normalize(new AppState()),
+                false,
+                exception.Message);
         }
     }
 
@@ -46,3 +61,5 @@ public sealed class AppDataStore
         File.Move(temporary, _path, overwrite: true);
     }
 }
+
+public sealed record AppDataLoadResult(AppState State, bool LoadedFromDisk, string? Error);
