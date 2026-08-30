@@ -12,7 +12,7 @@
 
         <StackPanel Grid.Row="0" Margin="0,0,0,16">
             <TextBlock Text="Balance Island" FontSize="28" FontWeight="SemiBold" />
-            <TextBlock Text="Windows 任务栏 AI API 余额监控 · v0.2.1"
+            <TextBlock Text="Windows 任务栏 AI API 余额监控 · v0.3.0"
                        Foreground="{DynamicResource SecondaryText}" Margin="0,5,0,0" />
         </StackPanel>
 
@@ -42,11 +42,14 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0" Margin="0,0,10,0">
                                 <TextBlock Text="Provider" />
-                                <ComboBox x:Name="ProviderBox" DisplayMemberPath="Display" SelectedValuePath="Value" />
+                                <TextBox x:Name="ProviderSearchBox" TextChanged="ProviderSearchBox_TextChanged"
+                                         ToolTip="可搜索名称、别名、环境变量名、Key 前缀或限制说明" />
+                                <ComboBox x:Name="ProviderBox" DisplayMemberPath="DisplayName" SelectedValuePath="Provider"
+                                          Margin="0,4,0,0" />
                             </StackPanel>
                             <StackPanel Grid.Column="1" Margin="0,0,10,0">
                                 <TextBlock Text="账户备注" />
-                                <TextBox x:Name="LabelBox" ToolTip="留空时显示 Key 后四位" />
+                                <TextBox x:Name="LabelBox" ToolTip="留空时显示安全 Key 后缀；短 Key 仅显示占位符" />
                             </StackPanel>
                             <StackPanel Grid.Column="2" Margin="0,0,10,0">
                                 <TextBlock Text="API Key" />
@@ -93,7 +96,7 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="14">
                         <TextBlock Text="余额告警" FontSize="18" FontWeight="SemiBold" />
-                        <TextBlock Text="与安卓版一致：跨越警告线、按固定额度继续下降时告警；可选异常大幅变动检测并带冷却时间。"
+                        <TextBlock Text="余额通知仅在进入预警或临界区间时触发；可选异常大幅变动检测并带冷却时间。"
                                    Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,2,0,14" />
                         <Border Background="{DynamicResource CardBackground}" CornerRadius="10" Padding="16">
                             <StackPanel>
@@ -105,10 +108,6 @@
                                     <StackPanel Width="210" Margin="0,0,12,10">
                                         <TextBlock Text="警告线" />
                                         <TextBox x:Name="WarningLineBox" ToolTip="余额低于该值进入严重告警" />
-                                    </StackPanel>
-                                    <StackPanel Width="210" Margin="0,0,12,10">
-                                        <TextBlock Text="继续下降步长" />
-                                        <TextBox x:Name="DropStepBox" ToolTip="自上次告警参考值再下降多少后再次通知" />
                                     </StackPanel>
                                 </WrapPanel>
                                 <CheckBox x:Name="AnomalyEnabledBox" Content="启用异常余额变动检测" Margin="0,4,0,10" />
@@ -142,28 +141,114 @@
             <TabItem Header="显示与外观">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="14">
-                        <TextBlock Text="显示账号" FontSize="18" FontWeight="SemiBold" />
-                        <TextBlock Text="选择哪些账户参加浮岛轮播。关闭显示不会删除账户、停止刷新或关闭余额告警。"
-                                   Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,2,0,10" />
-                        <Border Background="{DynamicResource CardBackground}" CornerRadius="10" Padding="16" Margin="0,0,0,16">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <ComboBox x:Name="DisplayAccountBox" Grid.Column="0" DisplayMemberPath="Display" SelectedValuePath="Id"
-                                          SelectionChanged="DisplayAccountBox_SelectionChanged" Margin="0,0,12,0" />
-                                <CheckBox x:Name="DisplayAccountVisibleBox" Grid.Column="1" Content="在浮岛显示" VerticalAlignment="Center" Margin="0,0,12,0" />
-                                <Button Grid.Column="2" Content="保存" Click="SaveDisplayAccount_Click" />
-                            </Grid>
-                        </Border>
-
-                        <TextBlock Text="位置 / 尺寸" FontSize="18" FontWeight="SemiBold" />
-                        <TextBlock Text="可选择任务栏位置和尺寸预设。开启编辑后直接拖动浮岛或拖拽边缘缩放；关闭后固定、鼠标穿透，全屏时自动隐藏。"
+                        <TextBlock Text="显示与外观" FontSize="18" FontWeight="SemiBold" />
+                        <TextBlock Text="主题和调色板即时应用；分组决定浮岛显示哪些账户。"
                                    Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,2,0,10" />
                         <Border Background="{DynamicResource CardBackground}" CornerRadius="10" Padding="16" Margin="0,0,0,16">
                             <StackPanel>
+                                <TextBlock Text="应用主题" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock Text="用途：统一设置窗口、对话框和原生标题栏的明暗外观。"
+                                           Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,3,0,8" />
+                                <TextBlock Text="使用：在下拉列表选择跟随系统、浅色或深色；高对比度始终由 Windows 优先处理。"
+                                           Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,0,0,8" />
+                                <ComboBox x:Name="ThemeModeBox" DisplayMemberPath="Display" SelectedValuePath="Value"
+                                          SelectionChanged="ThemeModeBox_SelectionChanged" Width="220" HorizontalAlignment="Left" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="{DynamicResource CardBackground}" CornerRadius="10" Padding="16" Margin="0,0,0,16">
+                            <StackPanel>
+                                <TextBlock Text="浮岛配色" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock Text="用途：按余额状态为浮岛文字着色，方便快速辨认风险。"
+                                           Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,3,0,8" />
+                                <TextBlock Text="使用：选择 5 套预设之一，或选择自定义并填写四个颜色后保存。"
+                                           Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,0,0,8" />
+                                <ComboBox x:Name="IslandPaletteBox" DisplayMemberPath="Display" SelectedValuePath="Value"
+                                          SelectionChanged="IslandPaletteBox_SelectionChanged" Width="220" HorizontalAlignment="Left" />
+                                <StackPanel x:Name="CustomColorFieldsPanel" Margin="0,4,0,0">
+                                    <TextBlock Text="使用 #RRGGBB 或 #AARRGGBB；预览反映当前输入，保存后才会应用。"
+                                               Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,0,0,6" />
+                                    <WrapPanel>
+                                        <StackPanel Width="175" Margin="0,0,12,0">
+                                            <TextBlock Text="正常" />
+                                            <TextBox x:Name="CustomNormalColorBox" TextChanged="CustomColorBox_TextChanged" />
+                                            <Border x:Name="CustomNormalColorPreview" Height="10" CornerRadius="3" Margin="0,-6,0,10" />
+                                        </StackPanel>
+                                        <StackPanel Width="175" Margin="0,0,12,0">
+                                            <TextBlock Text="异常" />
+                                            <TextBox x:Name="CustomAnomalyColorBox" TextChanged="CustomColorBox_TextChanged" />
+                                            <Border x:Name="CustomAnomalyColorPreview" Height="10" CornerRadius="3" Margin="0,-6,0,10" />
+                                        </StackPanel>
+                                        <StackPanel Width="175" Margin="0,0,12,0">
+                                            <TextBlock Text="预警" />
+                                            <TextBox x:Name="CustomWarning15ColorBox" TextChanged="CustomColorBox_TextChanged" />
+                                            <Border x:Name="CustomWarning15ColorPreview" Height="10" CornerRadius="3" Margin="0,-6,0,10" />
+                                        </StackPanel>
+                                        <StackPanel Width="175">
+                                            <TextBlock Text="临界" />
+                                            <TextBox x:Name="CustomCriticalColorBox" TextChanged="CustomColorBox_TextChanged" />
+                                            <Border x:Name="CustomCriticalColorPreview" Height="10" CornerRadius="3" Margin="0,-6,0,10" />
+                                        </StackPanel>
+                                    </WrapPanel>
+                                    <Button Content="保存自定义颜色" Click="SaveCustomColors_Click" HorizontalAlignment="Left" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="{DynamicResource CardBackground}" CornerRadius="10" Padding="16" Margin="0,0,0,16">
+                            <StackPanel>
+                                <TextBlock Text="浮岛显示分组" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock Text="用途：控制浮岛轮播哪些账户，或汇总同一 Provider 的多个账户。"
+                                           Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,3,0,8" />
+                                <TextBlock Text="使用：选择账户并保存；轮播可混合 Provider，聚合仅允许同一 Provider，随后设为活动分组。"
+                                           Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,0,0,8" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="240" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="160" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                        <TextBlock Text="现有分组" />
+                                        <ComboBox x:Name="DisplayGroupBox" DisplayMemberPath="Display" SelectedValuePath="Id"
+                                                  SelectionChanged="DisplayGroupBox_SelectionChanged" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                                        <TextBlock Text="分组名称" />
+                                        <TextBox x:Name="DisplayGroupNameBox" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Text="显示方式" />
+                                        <ComboBox x:Name="DisplayGroupModeBox" DisplayMemberPath="Display" SelectedValuePath="Value"
+                                                  SelectionChanged="DisplayGroupSelection_Changed" />
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock Text="选择账户（可多选）" Margin="0,2,0,4" />
+                                <ListBox x:Name="DisplayGroupAccountsList" DisplayMemberPath="Display" SelectionMode="Multiple"
+                                         SelectionChanged="DisplayGroupSelection_Changed" Height="130"
+                                         Background="{DynamicResource ControlBackground}" BorderBrush="{DynamicResource ControlBorder}" />
+                                <TextBlock x:Name="DisplayGroupValidationText" Foreground="{DynamicResource SecondaryText}"
+                                           TextWrapping="Wrap" Margin="0,6,0,0" />
+                                <TextBlock x:Name="ActiveDisplayGroupStatusText" Foreground="{DynamicResource SecondaryText}"
+                                           TextWrapping="Wrap" Margin="0,4,0,0" />
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+                                    <Button Content="新建" Click="NewDisplayGroup_Click" />
+                                    <Button x:Name="SaveDisplayGroupButton" Content="保存分组" Click="SaveDisplayGroup_Click" />
+                                    <Button x:Name="DeleteDisplayGroupButton" Content="删除分组" Click="DeleteDisplayGroup_Click" />
+                                    <Button x:Name="SetActiveDisplayGroupButton" Content="设为活动分组" Click="SetActiveDisplayGroup_Click" />
+                                    <Button x:Name="ClearActiveDisplayGroupButton" Content="停用分组，使用默认账户显示"
+                                            Click="ClearActiveDisplayGroup_Click" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="{DynamicResource CardBackground}" CornerRadius="10" Padding="16" Margin="0,0,0,16">
+                            <StackPanel>
+                                <TextBlock Text="位置 / 尺寸" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock Text="用途：调整浮岛在任务栏附近的位置和大小。"
+                                           Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,3,0,10" />
+                                <TextBlock Text="使用：选择预设，或开启编辑后拖动、缩放；关闭编辑后浮岛固定并鼠标穿透。"
+                                           Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,0,0,10" />
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
@@ -201,9 +286,6 @@
                             </StackPanel>
                         </Border>
 
-                        <TextBlock Text="文字与外观" FontSize="18" FontWeight="SemiBold" />
-                        <TextBlock Text="浮岛使用透明无背景的白色双行文字，左侧显示与 Android 版同源的 Provider 矢量图标；按任务栏显示器 DPI 定位与缩放。"
-                                   Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" />
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -212,17 +294,30 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="14">
                         <TextBlock Text="从环境读取 API" FontSize="18" FontWeight="SemiBold" />
-                        <TextBlock Text="发现系统 / 用户 / 当前进程环境变量后自动新增环境来源账户。不会覆盖手动保存到 Windows 凭据管理器的 Key；环境变量变化后会动态读取新值。"
+                        <TextBlock Text="扫描系统 / 用户 / 当前进程环境变量以供确认导入。扫描和启动提示都不会自动新增账户；环境变量变化后会动态读取新值。"
                                    Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,2,0,14" />
                         <Border Background="{DynamicResource CardBackground}" CornerRadius="10" Padding="16">
                             <StackPanel>
-                                <CheckBox x:Name="EnvironmentAutoImportBox" Content="启动及后台刷新时自动发现环境变量"
+                                <TextBlock Text="用途：查看当前进程、当前用户和系统范围内可识别的 Provider 凭据。"
+                                           Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,0,0,6" />
+                                <TextBlock Text="使用：点“扫描环境”，勾选要导入的项目并确认；默认不会选中或自动导入。"
+                                           Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,0,0,10" />
+                                <CheckBox x:Name="EnvironmentAutoImportBox" Content="启动后提示扫描环境变量"
                                           Checked="EnvironmentAutoImportBox_Changed" Unchecked="EnvironmentAutoImportBox_Changed" />
-                                <Button Content="立即扫描并添加" Click="ScanEnvironment_Click" HorizontalAlignment="Left" Margin="0,12,0,12" />
-                                <TextBlock Text="支持变量" FontWeight="SemiBold" />
-                                <TextBlock x:Name="EnvironmentVariablesText" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,4,0,12" />
-                                <TextBlock Text="当前限制" FontWeight="SemiBold" />
-                                <TextBlock x:Name="EnvironmentLimitationsText" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                                <Button Content="扫描环境" Click="ScanEnvironment_Click" HorizontalAlignment="Left" Margin="0,12,0,12" />
+                                <TextBlock Text="支持的 Provider 与环境变量" FontWeight="SemiBold" />
+                                <DataGrid x:Name="EnvironmentProviderGrid" AutoGenerateColumns="False" IsReadOnly="True"
+                                          CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Single"
+                                          HeadersVisibility="Column" GridLinesVisibility="Horizontal" Height="260"
+                                          Background="{DynamicResource WindowBackground}" BorderThickness="0" Margin="0,6,0,0">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Provider" Binding="{Binding DisplayName}" Width="150" />
+                                        <DataGridTextColumn Header="支持能力" Binding="{Binding CapabilityText}" Width="105" />
+                                        <DataGridTextColumn Header="匹配方式" Binding="{Binding MatchingMethodText}" Width="260" />
+                                        <DataGridTextColumn Header="变量名关键词" Binding="{Binding EnvironmentNameKeywordsText}" Width="130" />
+                                        <DataGridTextColumn Header="限制说明" Binding="{Binding Limitations}" Width="*" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -230,12 +325,34 @@
             </TabItem>
 
             <TabItem Header="刷新与通知">
-                <Grid Margin="14">
-                    <StackPanel>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="14">
                         <TextBlock Text="刷新与通知" FontSize="18" FontWeight="SemiBold" />
-                        <TextBlock Text="每个 Provider 使用自己的推荐刷新周期，也可在添加账户时覆盖。遇到 429 会指数退避；余额告警通过 Windows 托盘通知显示。"
+                        <TextBlock Text="每个 Provider 使用自己的推荐刷新周期，也可在添加账户时覆盖。遇到 429 会指数退避；余额告警使用 Windows 通知并在失败时回退托盘。"
                                    Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,2,0,14" />
                         <Border Background="{DynamicResource CardBackground}" CornerRadius="10" Padding="16">
+                            <StackPanel>
+                                <TextBlock Text="重要通知" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock Text="用途：分别控制接近警戒线、到达警戒线和异常变动三类余额提醒。"
+                                           Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,3,0,6" />
+                                <TextBlock Text="使用：勾选需要的事件，再用测试按钮确认当前 Windows 通知通道。"
+                                           Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,0,0,4" />
+                                <CheckBox x:Name="NotifyWarning15Box" Content="余额接近警戒线（15%）"
+                                          Checked="NotificationSettings_Changed" Unchecked="NotificationSettings_Changed" Margin="0,10,0,4" />
+                                <CheckBox x:Name="NotifyCriticalBox" Content="余额到达警戒线"
+                                          Checked="NotificationSettings_Changed" Unchecked="NotificationSettings_Changed" Margin="0,0,0,4" />
+                                <CheckBox x:Name="NotifyAnomalyBox" Content="余额异常变动"
+                                          Checked="NotificationSettings_Changed" Unchecked="NotificationSettings_Changed" Margin="0,0,0,10" />
+                                <TextBlock x:Name="NotificationChannelStatusText" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" />
+                                <TextBlock Text="Windows 的专注助手、通知权限和重要通知设置仍然优先；应用无法绕过系统策略。"
+                                           Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,6,0,0" />
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,8,0,0">
+                                    <Button Content="发送测试通知" Click="SendTestNotification_Click" />
+                                    <Button Content="打开 Windows 通知设置" Click="OpenNotificationSettings_Click" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border Background="{DynamicResource CardBackground}" CornerRadius="10" Padding="16" Margin="0,16,0,0">
                             <StackPanel>
                                 <TextBlock Text="运行" FontSize="16" FontWeight="SemiBold" />
                                 <TextBlock Text="关闭主窗口后应用继续驻留托盘；全屏应用占满显示器时自动隐藏浮岛，退出全屏后恢复。"
@@ -243,7 +360,7 @@
                             </StackPanel>
                         </Border>
                     </StackPanel>
-                </Grid>
+                </ScrollViewer>
             </TabItem>
         </TabControl>
 

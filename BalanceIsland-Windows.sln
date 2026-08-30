@@ -4,6 +4,8 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BalanceIsland.Windows", "src\BalanceIsland.Windows\BalanceIsland.Windows.csproj", "{9B859D85-BB2B-4D3D-BF3A-C41AE82903F4}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BalanceIsland.Windows.Tests", "tests\BalanceIsland.Windows.Tests\BalanceIsland.Windows.Tests.csproj", "{A44A0B5E-484B-4E49-A279-0B2B23DE445F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -14,5 +16,9 @@ Global
 		{9B859D85-BB2B-4D3D-BF3A-C41AE82903F4}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9B859D85-BB2B-4D3D-BF3A-C41AE82903F4}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{9B859D85-BB2B-4D3D-BF3A-C41AE82903F4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A44A0B5E-484B-4E49-A279-0B2B23DE445F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A44A0B5E-484B-4E49-A279-0B2B23DE445F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A44A0B5E-484B-4E49-A279-0B2B23DE445F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A44A0B5E-484B-4E49-A279-0B2B23DE445F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

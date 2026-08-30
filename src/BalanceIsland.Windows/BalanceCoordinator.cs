@@ -26,7 +26,8 @@ public sealed class BalanceCoordinator : IDisposable
         _store = store;
         _credentials = credentials;
         _client = client;
-        State = store.Load();
+        var loadResult = store.LoadResult();
+        State = loadResult.State;
         if (State.IslandLayoutVersion < 1)
         {
             State.IslandPositionPreset = IslandPositionPreset.Left;
@@ -41,9 +42,8 @@ public sealed class BalanceCoordinator : IDisposable
             // Editing is session-only so the overlay always starts locked and click-through.
             State.IslandEditMode = false;
         }
-        if (State.EnvironmentAutoImportEnabled)
-            ImportEnvironmentAccounts(saveAndNotify: false);
-        _store.Save(State);
+        if (loadResult.LoadedFromDisk || loadResult.Error is null)
+            _store.Save(State);
         _timer = new System.Threading.Timer(async _ => await RefreshFromTimerAsync(), null,
             TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(30));
     }
@@ -67,7 +67,7 @@ public sealed class BalanceCoordinator : IDisposable
         {
             Provider = provider,
             Label = label.Trim(),
-            KeySuffix = key.Length <= 4 ? key : key[^4..],
+            KeySuffix = ApiKeySanitizer.SafeKeySuffix(key),
             ManualBalance = manualBalance,
             RefreshIntervalMinutes = refreshIntervalMinutes == 0
                 ? 0 : Math.Clamp(refreshIntervalMinutes, 1, 1440),
@@ -84,6 +84,7 @@ public sealed class BalanceCoordinator : IDisposable
     public void RemoveAccount(string credentialId)
     {
         var account = State.Accounts.FirstOrDefault(item => item.Id == credentialId);
+        IslandDisplayGroups.RemoveAccount(State, credentialId);
         State.Accounts.RemoveAll(item => item.Id == credentialId);
         State.Snapshots.Remove(credentialId);
         State.Schedules.Remove(credentialId);
@@ -104,6 +105,15 @@ public sealed class BalanceCoordinator : IDisposable
         SaveAndNotify();
     }
 
+    public void SetAccountShowInIsland(string credentialId, bool showInIsland)
+    {
+        var account = State.Accounts.FirstOrDefault(item => item.Id == credentialId)
+            ?? throw new ArgumentException("账户不存在", nameof(credentialId));
+        if (account.ShowInIsland == showInIsland) return;
+        account.ShowInIsland = showInIsland;
+        SaveAndNotify();
+    }
+
     public async Task UpdateAccountAsync(
         string credentialId,
         string label,
@@ -120,7 +130,7 @@ public sealed class BalanceCoordinator : IDisposable
         if (!string.IsNullOrWhiteSpace(key))
         {
             _credentials.Write(account.Id, key);
-            account.KeySuffix = key.Length <= 4 ? key : key[^4..];
+            account.KeySuffix = ApiKeySanitizer.SafeKeySuffix(key);
             account.CredentialSource = CredentialSource.WindowsCredentialManager;
             account.EnvironmentVariableName = null;
         }
@@ -137,6 +147,81 @@ public sealed class BalanceCoordinator : IDisposable
     public void SetIslandEnabled(bool enabled)
     {
         State.IslandEnabled = enabled;
+        SaveAndNotify();
+    }
+
+    public void SetThemeMode(AppThemeMode mode)
+    {
+        if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));
+        if (State.ThemeMode == mode) return;
+        State.ThemeMode = mode;
+        SaveAndNotify();
+    }
+
+    public void SetIslandColorTheme(IslandColorTheme theme)
+    {
+        if (!Enum.IsDefined(theme)) throw new ArgumentOutOfRangeException(nameof(theme));
+        if (State.IslandColorTheme == theme) return;
+        State.IslandColorTheme = theme;
+        SaveAndNotify();
+    }
+
+    public void SetCustomIslandColors(string normal, string anomaly, string warning15, string critical)
+    {
+        var normalizedNormal = NormalizeIslandColor(normal, nameof(normal));
+        var normalizedAnomaly = NormalizeIslandColor(anomaly, nameof(anomaly));
+        var normalizedWarning15 = NormalizeIslandColor(warning15, nameof(warning15));
+        var normalizedCritical = NormalizeIslandColor(critical, nameof(critical));
+
+        State.CustomNormalColor = normalizedNormal;
+        State.CustomAnomalyColor = normalizedAnomaly;
+        State.CustomWarning15Color = normalizedWarning15;
+        State.CustomCriticalColor = normalizedCritical;
+        SaveAndNotify();
+    }
+
+    public IslandDisplayGroup CreateDisplayGroup(
+        string name,
+        IslandGroupMode mode,
+        IEnumerable<string> accountIds)
+    {
+        var group = IslandDisplayGroups.Create(State, name, mode, accountIds);
+        SaveAndNotify();
+        return group;
+    }
+
+    public IslandDisplayGroup UpdateDisplayGroup(
+        string groupId,
+        string name,
+        IslandGroupMode mode,
+        IEnumerable<string> accountIds)
+    {
+        var group = IslandDisplayGroups.Update(State, groupId, name, mode, accountIds);
+        SaveAndNotify();
+        return group;
+    }
+
+    public void DeleteDisplayGroup(string groupId)
+    {
+        if (string.IsNullOrWhiteSpace(groupId) ||
+            State.DisplayGroups.All(group => group.Id != groupId))
+            throw new ArgumentException("要删除的分组不存在", nameof(groupId));
+
+        IslandDisplayGroups.Delete(State, groupId);
+        SaveAndNotify();
+    }
+
+    public void SetActiveDisplayGroup(string? groupId)
+    {
+        IslandDisplayGroups.SetActive(State, groupId);
+        SaveAndNotify();
+    }
+
+    public void SetNotificationSettings(bool warning15, bool critical, bool anomaly)
+    {
+        State.NotifyWarning15 = warning15;
+        State.NotifyCritical = critical;
+        State.NotifyAnomaly = anomaly;
         SaveAndNotify();
     }
 
@@ -206,63 +291,73 @@ public sealed class BalanceCoordinator : IDisposable
 
     public void SetEnvironmentAutoImport(bool enabled)
     {
+        if (State.EnvironmentAutoImportEnabled == enabled) return;
         State.EnvironmentAutoImportEnabled = enabled;
-        if (enabled) ImportEnvironmentAccounts(saveAndNotify: false);
         SaveAndNotify();
     }
 
-    public EnvironmentImportResult ImportEnvironmentAccounts() => ImportEnvironmentAccounts(true);
-
-    private EnvironmentImportResult ImportEnvironmentAccounts(bool saveAndNotify)
+    public EnvironmentImportResult ImportEnvironmentAccounts(
+        IEnumerable<EnvironmentCredentialCandidate> selectedCandidates)
     {
-        var found = EnvironmentCredentialDiscovery.Scan();
+        ArgumentNullException.ThrowIfNull(selectedCandidates);
+
+        var selected = selectedCandidates.ToArray();
+        if (selected.Any(candidate => candidate.Provider is null))
+            throw new ArgumentException("未分类的环境凭据必须先明确选择 Provider。", nameof(selectedCandidates));
         var added = new List<string>();
-        var refreshed = new List<string>();
-        foreach (var candidate in found)
+        var addedCredentialIds = new List<string>();
+        var suffixChanged = false;
+        var importedVariables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var candidate in selected)
         {
+            var provider = candidate.Provider
+                ?? throw new ArgumentException("未分类的环境凭据必须先明确选择 Provider。", nameof(selectedCandidates));
+            if (!importedVariables.Add($"{provider}\0{candidate.VariableName}")) continue;
+
             var envAccount = State.Accounts.FirstOrDefault(account =>
                 account.CredentialSource == CredentialSource.EnvironmentVariable &&
-                account.Provider == candidate.Provider &&
+                account.Provider == provider &&
                 string.Equals(account.EnvironmentVariableName, candidate.VariableName, StringComparison.OrdinalIgnoreCase));
             if (envAccount is not null)
             {
-                var suffix = candidate.ApiKey.Length <= 4 ? candidate.ApiKey : candidate.ApiKey[^4..];
-                if (envAccount.KeySuffix != suffix)
-                {
-                    envAccount.KeySuffix = suffix;
-                    refreshed.Add(candidate.Provider.DisplayName());
-                }
+                suffixChanged |= UpdateSafeKeySuffix(envAccount, candidate.ApiKey);
                 continue;
             }
 
             var duplicateExplicit = State.Accounts.Any(account =>
-                account.Provider == candidate.Provider &&
+                account.Provider == provider &&
                 account.CredentialSource == CredentialSource.WindowsCredentialManager &&
                 string.Equals(_credentials.Read(account.Id), candidate.ApiKey, StringComparison.Ordinal));
             if (duplicateExplicit) continue;
 
             var account = new Account
             {
-                Provider = candidate.Provider,
+                Provider = provider,
                 Label = $"环境变量：{candidate.VariableName}",
-                KeySuffix = candidate.ApiKey.Length <= 4 ? candidate.ApiKey : candidate.ApiKey[^4..],
+                KeySuffix = ApiKeySanitizer.SafeKeySuffix(candidate.ApiKey),
                 CredentialSource = CredentialSource.EnvironmentVariable,
                 EnvironmentVariableName = candidate.VariableName
             };
             State.Accounts.Add(account);
             State.Snapshots[account.Id] = Waiting(account);
-            added.Add(candidate.Provider.DisplayName());
+            added.Add(provider.DisplayName());
+            if (account.IsEnabled) addedCredentialIds.Add(account.Id);
         }
 
-        if (saveAndNotify && (added.Count > 0 || refreshed.Count > 0)) SaveAndNotify();
-        return new EnvironmentImportResult(found.Count, added, refreshed);
+        if (added.Count > 0 || suffixChanged)
+        {
+            SaveAndNotify();
+            if (addedCredentialIds.Count > 0)
+                _ = RefreshDueAsync(force: true,
+                    new HashSet<string>(addedCredentialIds, StringComparer.Ordinal), waitForLock: true);
+        }
+        return new EnvironmentImportResult(selected.Length, added, []);
     }
 
     public void UpdateAlertSettings(
         string credentialId,
         bool enabled,
         double warningLine,
-        double dropStep,
         bool anomalyEnabled,
         double anomalyThreshold,
         double anomalyPercentThreshold,
@@ -273,7 +368,6 @@ public sealed class BalanceCoordinator : IDisposable
             ?? throw new ArgumentException("账户不存在");
         account.AlertEnabled = enabled;
         account.WarningLine = Math.Max(0, warningLine);
-        account.DropStep = Math.Max(0.01, dropStep);
         account.AnomalyEnabled = anomalyEnabled;
         account.AnomalyThreshold = Math.Max(0.01, anomalyThreshold);
         account.AnomalyPercentThreshold = Math.Max(0.01, anomalyPercentThreshold);
@@ -283,14 +377,25 @@ public sealed class BalanceCoordinator : IDisposable
         SaveAndNotify();
     }
 
-    public async Task RefreshDueAsync(bool force, string? targetCredentialId = null)
+    public Task RefreshDueAsync(bool force, string? targetCredentialId = null) =>
+        RefreshDueAsync(force, targetCredentialId is null
+            ? null
+            : new HashSet<string>([targetCredentialId], StringComparer.Ordinal), waitForLock: false);
+
+    private async Task RefreshDueAsync(
+        bool force,
+        IReadOnlySet<string>? targetCredentialIds,
+        bool waitForLock)
     {
-        if (!await _refreshLock.WaitAsync(0)) return;
+        if (waitForLock)
+            await _refreshLock.WaitAsync();
+        else if (!await _refreshLock.WaitAsync(0))
+            return;
         try
         {
             foreach (var account in State.Accounts.ToArray())
             {
-                if (targetCredentialId is not null && account.Id != targetCredentialId) continue;
+                if (targetCredentialIds is not null && !targetCredentialIds.Contains(account.Id)) continue;
                 if (!account.IsEnabled) continue;
                 var schedule = State.Schedules.TryGetValue(account.Id, out var stored)
                     ? stored : State.Schedules[account.Id] = new ScheduleState();
@@ -333,7 +438,7 @@ public sealed class BalanceCoordinator : IDisposable
                 catch (Exception exception)
                 {
                     schedule.NextScheduled = DateTimeOffset.Now.AddMinutes(account.EffectiveRefreshMinutes);
-                    State.Snapshots[account.Id] = Error(account, ReadableError(exception));
+                    State.Snapshots[account.Id] = Error(account, ReadableError(exception, key));
                 }
                 finally
                 {
@@ -347,17 +452,34 @@ public sealed class BalanceCoordinator : IDisposable
         }
     }
 
-    private string? ResolveApiKey(Account account) => account.CredentialSource switch
+    private string? ResolveApiKey(Account account)
     {
-        CredentialSource.EnvironmentVariable => EnvironmentCredentialDiscovery.Read(account.EnvironmentVariableName),
-        _ => _credentials.Read(account.Id)
-    };
+        var key = account.CredentialSource switch
+        {
+            CredentialSource.EnvironmentVariable => EnvironmentCredentialDiscovery.Read(account.EnvironmentVariableName),
+            _ => _credentials.Read(account.Id)
+        };
+        UpdateSafeKeySuffix(account, key);
+        return key;
+    }
+
+    private bool UpdateSafeKeySuffix(Account account, string? secret)
+    {
+        var suffix = ApiKeySanitizer.SafeKeySuffix(secret);
+        var changed = !string.Equals(account.KeySuffix, suffix, StringComparison.Ordinal);
+        account.KeySuffix = suffix;
+        if (State.Snapshots.TryGetValue(account.Id, out var snapshot) && snapshot is not null)
+        {
+            changed |= !string.Equals(snapshot.KeySuffix, suffix, StringComparison.Ordinal);
+            snapshot.KeySuffix = suffix;
+        }
+        return changed;
+    }
 
     private async Task RefreshFromTimerAsync()
     {
         try
         {
-            if (State.EnvironmentAutoImportEnabled) ImportEnvironmentAccounts(saveAndNotify: true);
             await RefreshDueAsync(force: false);
         }
         catch
@@ -434,12 +556,12 @@ public sealed class BalanceCoordinator : IDisposable
     {
         var copy = Copy(raw);
         var amount = account.ManualBalance ?? raw.BalanceAmount;
-        if (account.AlertEnabled && amount is not null)
+        if (account.AlertEnabled && amount is not null && raw.Status != SnapshotStatus.Error)
         {
             copy.Status = amount <= account.WarningLine
                 ? SnapshotStatus.Critical
-                : amount <= account.WarningLine * 1.5
-                    ? SnapshotStatus.Warning : raw.Status;
+                : amount <= account.WarningLine * 1.15d
+                    ? SnapshotStatus.Warning : SnapshotStatus.Ok;
         }
         if (account.ManualBalance is null) return copy;
 
@@ -454,64 +576,84 @@ public sealed class BalanceCoordinator : IDisposable
 
     private void EvaluateAlerts(Account account, BalanceSnapshot snapshot)
     {
-        if (!account.AlertEnabled || snapshot.BalanceAmount is not { } amount ||
-            snapshot.Status == SnapshotStatus.Error) return;
         var previous = State.Alerts.TryGetValue(account.Id, out var alert)
             ? alert : new BalanceAlertState();
-        var level = amount <= account.WarningLine ? 2 : amount <= account.WarningLine * 1.5 ? 1 : 0;
-        var reasons = new List<string>();
-        if (level > previous.LastLevel)
-            reasons.Add(level == 2 ? $"低于警告线 {account.WarningLine:0.00}" : "余额接近警告线");
-        if (previous.LastNotifiedAmount is { } reference && amount <= reference - account.DropStep)
-            reasons.Add($"余额下降 {reference - amount:0.00}");
+        var evaluation = BalanceStateEvaluator.Evaluate(account, snapshot, previous, DateTimeOffset.Now);
+        State.Alerts[account.Id] = evaluation.NextState;
+        var deliverableAlerts = evaluation.EnteredAlerts
+            .Where(IsNotificationEnabled)
+            .Select(kind => CreateAlertEvent(account, snapshot, previous, kind))
+            .ToArray();
 
-        var now = DateTimeOffset.Now;
-        var anomaly = false;
-        if (account.AnomalyEnabled && previous.LastSeenAmount is { } last && amount != last)
+        if (deliverableAlerts.Length > 0)
         {
-            var change = Math.Abs(amount - last);
-            var absolute = change >= account.AnomalyThreshold;
-            var percent = last > 0
-                ? change >= last * account.AnomalyPercentThreshold / 100d : absolute;
-            var over = account.AnomalyMode switch
-            {
-                AnomalyMode.Absolute => absolute,
-                AnomalyMode.Percent => percent,
-                _ => absolute || percent
-            };
-            var coolingDown = previous.LastAnomalyAt is { } lastAt &&
-                now - lastAt < TimeSpan.FromMinutes(account.AnomalyCooldownMinutes);
-            anomaly = over && !coolingDown;
-            if (anomaly)
-            {
-                AlertRaised?.Invoke(this, new BalanceAlertEventArgs(
-                    $"{account.Provider.DisplayName()} {account.DisplayLabel} 异常变动",
-                    $"{BalanceSnapshot.CurrencySymbol(snapshot.CurrencyCode)}{last:0.00} → " +
-                    $"{BalanceSnapshot.CurrencySymbol(snapshot.CurrencyCode)}{amount:0.00}"));
-            }
+            // Delivery is at-most-once per persisted transition: the application attempts
+            // native Toast delivery and, on failure, one tray fallback without reopening it.
+            _store.Save(State);
+            foreach (var alertEvent in deliverableAlerts)
+                AlertRaised?.Invoke(this, alertEvent);
         }
-
-        var shouldNotify = reasons.Count > 0;
-        var resetReference = previous.LastNotifiedAmount is null || amount > previous.LastNotifiedAmount;
-        previous.LastNotifiedAmount = shouldNotify || resetReference
-            ? amount : previous.LastNotifiedAmount;
-        previous.LastLevel = level;
-        previous.LastSeenAmount = amount;
-        if (anomaly) previous.LastAnomalyAt = now;
-        State.Alerts[account.Id] = previous;
-        if (shouldNotify)
-            AlertRaised?.Invoke(this, new BalanceAlertEventArgs(
-                $"{account.Provider.DisplayName()} {account.DisplayLabel}",
-                $"{snapshot.PrimaryText} · {string.Join("；", reasons)}"));
     }
 
-    private static string ReadableError(Exception exception) => exception switch
+    private bool IsNotificationEnabled(BalanceAlertKind kind) => kind switch
     {
-        TaskCanceledException => "网络请求超时",
-        HttpRequestException => "网络连接失败",
-        ProviderApiException api => api.Message,
-        _ => exception.Message.Length > 120 ? exception.Message[..120] : exception.Message
+        BalanceAlertKind.Warning15 => State.NotifyWarning15,
+        BalanceAlertKind.Critical => State.NotifyCritical,
+        BalanceAlertKind.Anomaly => State.NotifyAnomaly,
+        _ => false
     };
+
+    private static BalanceAlertEventArgs CreateAlertEvent(
+        Account account,
+        BalanceSnapshot snapshot,
+        BalanceAlertState previous,
+        BalanceAlertKind kind)
+    {
+        var provider = account.Provider.DisplayName();
+        var title = $"{provider} · {AlertTitle(kind)}";
+        var current = snapshot.PrimaryText;
+        var message = kind == BalanceAlertKind.Anomaly && previous.LastSeenAmount is { } last
+            ? $"{BalanceSnapshot.CurrencySymbol(snapshot.CurrencyCode)}{last:0.00} → {current} · 异常变动"
+            : kind == BalanceAlertKind.Critical
+                ? $"{current} · 已到达警戒线"
+                : $"{current} · 接近警戒线";
+        return new BalanceAlertEventArgs(
+            kind,
+            title,
+            message,
+            account.Id,
+            account.Label?.Trim() ?? "",
+            ApiKeySanitizer.MaskSuffix(account.KeySuffix));
+    }
+
+    private static string AlertTitle(BalanceAlertKind kind) => kind switch
+    {
+        BalanceAlertKind.Warning15 => "余额预警",
+        BalanceAlertKind.Critical => "余额临界",
+        BalanceAlertKind.Anomaly => "异常变动",
+        _ => "余额通知"
+    };
+
+    private static string ReadableError(Exception exception, string? credentialKey = null)
+    {
+        var message = exception switch
+        {
+            TaskCanceledException => "网络请求超时",
+            HttpRequestException => "网络连接失败",
+            ProviderApiException api => api.Message,
+            _ => exception.Message
+        };
+        // Provider responses may echo the credential back (e.g. 401 "invalid key <key>").
+        // Redact it before it can reach state.json, the island or notifications.
+        message = ApiKeySanitizer.RedactSecret(message, credentialKey);
+        return message.Length > 120 ? message[..120] : message;
+    }
+
+    private static string NormalizeIslandColor(string color, string parameterName)
+    {
+        if (IslandColorPalettes.TryNormalizeColor(color, out var normalized)) return normalized;
+        throw new ArgumentException("颜色必须是 #RRGGBB 或 #AARRGGBB", parameterName);
+    }
 
     private static BalanceSnapshot Waiting(Account account) => new()
     {
@@ -568,10 +710,20 @@ public sealed class BalanceCoordinator : IDisposable
     }
 }
 
-public sealed class BalanceAlertEventArgs(string title, string message) : EventArgs
+public sealed class BalanceAlertEventArgs(
+    BalanceAlertKind kind,
+    string title,
+    string message,
+    string accountId,
+    string accountNote,
+    string maskedKeySuffix) : EventArgs
 {
+    public BalanceAlertKind Kind { get; } = kind;
     public string Title { get; } = title;
     public string Message { get; } = message;
+    public string AccountId { get; } = accountId;
+    public string AccountNote { get; } = accountNote;
+    public string MaskedKeySuffix { get; } = maskedKeySuffix;
 }
 
 public sealed record EnvironmentImportResult(

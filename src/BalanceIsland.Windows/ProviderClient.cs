@@ -6,14 +6,14 @@ using System.Text.Json;
 
 namespace BalanceIsland.Windows;
 
-public sealed class ProviderClient
+public class ProviderClient
 {
     private readonly HttpClient _http = new()
     {
         Timeout = TimeSpan.FromSeconds(25)
     };
 
-    public Task<BalanceSnapshot> FetchAsync(ApiCredential credential, CancellationToken token) =>
+    public virtual Task<BalanceSnapshot> FetchAsync(ApiCredential credential, CancellationToken token) =>
         credential.Account.Provider switch
         {
             Provider.DeepSeek => FetchDeepSeekAsync(credential, token),

@@ -38,6 +38,44 @@ public enum AnomalyMode
     Both
 }
 
+public enum BalanceVisualState
+{
+    Normal,
+    Warning15,
+    Anomaly,
+    Critical
+}
+
+public enum BalanceAlertKind
+{
+    Warning15,
+    Critical,
+    Anomaly
+}
+
+public enum AppThemeMode
+{
+    System,
+    Light,
+    Dark
+}
+
+public enum IslandColorTheme
+{
+    Classic,
+    Mint,
+    Sky,
+    Coral,
+    Lime,
+    Custom
+}
+
+public enum IslandGroupMode
+{
+    Rotation,
+    Aggregate
+}
+
 public enum IslandDisplayMode
 {
     Floating,
@@ -68,39 +106,13 @@ public enum CredentialSource
 
 public static class ProviderInfo
 {
-    public static string DisplayName(this Provider value) => value switch
-    {
-        Provider.DeepSeek => "DeepSeek",
-        Provider.OpenAI => "OpenAI",
-        Provider.OpenRouter => "OpenRouter",
-        Provider.SiliconFlow => "SiliconFlow",
-        Provider.Moonshot => "Kimi / Moonshot",
-        Provider.MiMo => "Xiaomi MiMo",
-        Provider.Anthropic => "Anthropic",
-        Provider.Gemini => "Google Gemini",
-        Provider.XAI => "xAI / Grok",
-        _ => value.ToString()
-    };
+    public static string DisplayName(this Provider value) => ProviderCatalog.Get(value).DisplayName;
 
-    public static string DefaultCurrency(this Provider value) => value is
-        Provider.DeepSeek or Provider.SiliconFlow or Provider.Moonshot or Provider.MiMo
-        ? "CNY" : "USD";
+    public static string DefaultCurrency(this Provider value) => ProviderCatalog.Get(value).DefaultCurrency;
 
-    public static BalanceCapability Capability(this Provider value) => value switch
-    {
-        Provider.DeepSeek or Provider.OpenRouter or Provider.SiliconFlow or Provider.Moonshot
-            => BalanceCapability.DirectBalance,
-        Provider.OpenAI => BalanceCapability.UsageOrLimit,
-        _ => BalanceCapability.KeyCheckOnly
-    };
+    public static BalanceCapability Capability(this Provider value) => ProviderCatalog.Get(value).Capability;
 
-    public static int RecommendedRefreshMinutes(this Provider value) => value switch
-    {
-        Provider.DeepSeek => 1,
-        Provider.OpenAI => 5,
-        Provider.OpenRouter or Provider.SiliconFlow or Provider.Moonshot => 2,
-        _ => 15
-    };
+    public static int RecommendedRefreshMinutes(this Provider value) => ProviderCatalog.Get(value).RecommendedRefreshMinutes;
 }
 
 public sealed class Account
@@ -128,7 +140,7 @@ public sealed class Account
     public string? EnvironmentVariableName { get; set; }
 
     [JsonIgnore]
-    public string DisplayLabel => string.IsNullOrWhiteSpace(Label) ? $"••••{KeySuffix}" : Label;
+    public string DisplayLabel => string.IsNullOrWhiteSpace(Label) ? ApiKeySanitizer.MaskSuffix(KeySuffix) : Label;
     [JsonIgnore]
     public string CredentialSourceLabel => CredentialSource == CredentialSource.EnvironmentVariable
         ? $"环境变量 · {EnvironmentVariableName}" : "Windows 凭据管理器";
@@ -158,7 +170,7 @@ public sealed class BalanceSnapshot
 
     [JsonIgnore]
     public string AccountDisplayLabel => string.IsNullOrWhiteSpace(AccountLabel)
-        ? $"••••{KeySuffix}" : AccountLabel;
+        ? ApiKeySanitizer.MaskSuffix(KeySuffix) : AccountLabel;
     [JsonIgnore]
     public string IslandText
     {
@@ -199,12 +211,43 @@ public sealed class BalanceAlertState
 {
     public double? LastNotifiedAmount { get; set; }
     public int LastLevel { get; set; }
+    // This tracks only the balance band (Normal, Warning15, or Critical), never a transient anomaly.
+    public BalanceVisualState LastBalanceBand { get; set; }
+    // This is the most recently evaluated island state and may include a transient Anomaly.
+    public BalanceVisualState LastVisualState { get; set; }
     public double? LastSeenAmount { get; set; }
     public DateTimeOffset? LastAnomalyAt { get; set; }
 }
 
+public sealed class IslandDisplayGroup
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Name { get; set; } = "新分组";
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public IslandGroupMode Mode { get; set; } = IslandGroupMode.Rotation;
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public Provider? AggregateProvider { get; set; }
+    public List<string> AccountIds { get; set; } = [];
+}
+
+public sealed class IslandDisplayItem
+{
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public Provider? Provider { get; init; }
+    public string? IconResourceKey { get; init; }
+    public string Title { get; init; } = "";
+    public string PrimaryText { get; init; } = "";
+    public string SecondaryText { get; init; } = "";
+    public double? BalanceAmount { get; init; }
+    public double? TodayUsedAmount { get; init; }
+    public string CurrencyCode { get; init; } = "USD";
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public BalanceVisualState VisualState { get; init; }
+}
+
 public sealed class AppState
 {
+    public int? SafeKeySuffixVersion { get; set; }
     public List<Account> Accounts { get; set; } = [];
     public Dictionary<string, BalanceSnapshot> Snapshots { get; set; } = [];
     public Dictionary<string, ScheduleState> Schedules { get; set; } = [];
@@ -226,6 +269,19 @@ public sealed class AppState
     public double IslandEditTop { get; set; } = double.NaN;
     public int IslandLayoutVersion { get; set; }
     public bool EnvironmentAutoImportEnabled { get; set; }
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public AppThemeMode ThemeMode { get; set; } = AppThemeMode.System;
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public IslandColorTheme IslandColorTheme { get; set; } = IslandColorTheme.Classic;
+    public string CustomNormalColor { get; set; } = "#FFFFFFFF";
+    public string CustomAnomalyColor { get; set; } = "#FFD778FF";
+    public string CustomWarning15Color { get; set; } = "#FFFFB340";
+    public string CustomCriticalColor { get; set; } = "#FFFF5C6C";
+    public List<IslandDisplayGroup> DisplayGroups { get; set; } = [];
+    public string? ActiveDisplayGroupId { get; set; }
+    public bool NotifyWarning15 { get; set; } = true;
+    public bool NotifyCritical { get; set; } = true;
+    public bool NotifyAnomaly { get; set; } = true;
 }
 
 public sealed record ApiCredential(Account Account, string ApiKey);

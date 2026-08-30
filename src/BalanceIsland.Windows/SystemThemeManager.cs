@@ -21,14 +21,24 @@ public sealed class SystemThemeManager : IDisposable
     private readonly ResourceDictionary _resources;
     private readonly Dispatcher _dispatcher;
     private readonly List<WeakReference<Window>> _windows = [];
+    private AppThemeMode _mode;
     private bool _isDark;
 
-    public SystemThemeManager(ResourceDictionary resources, Dispatcher dispatcher)
+    public SystemThemeManager(ResourceDictionary resources, Dispatcher dispatcher, AppThemeMode mode)
     {
         _resources = resources;
         _dispatcher = dispatcher;
+        _mode = NormalizeMode(mode);
         ApplyTheme();
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
+    }
+
+    public AppThemeMode Mode => _mode;
+
+    public void SetMode(AppThemeMode mode)
+    {
+        _mode = NormalizeMode(mode);
+        ApplyTheme();
     }
 
     public void Track(Window window)
@@ -41,14 +51,20 @@ public sealed class SystemThemeManager : IDisposable
     private void OnUserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
     {
         if (_dispatcher.HasShutdownStarted) return;
-        _dispatcher.BeginInvoke(ApplyTheme);
+        _dispatcher.BeginInvoke(() =>
+        {
+            // A forced light/dark choice is retained by IsDarkMode; System is the only
+            // mode that reads the Windows light/dark preference. Reapplying also covers
+            // entering or leaving high contrast, which is always the first branch.
+            ApplyTheme();
+        });
     }
 
     private void ApplyTheme()
     {
-        _isDark = IsWindowsDarkMode();
         if (SystemParameters.HighContrast)
         {
+            _isDark = false;
             Set("WindowBackground", WpfSystemColors.WindowColor);
             Set("CardBackground", WpfSystemColors.ControlColor);
             Set("ControlBackground", WpfSystemColors.WindowColor);
@@ -67,7 +83,7 @@ public sealed class SystemThemeManager : IDisposable
             Set("GridAlternateRowBackground", WpfSystemColors.ControlColor);
             Set("IslandBackground", WpfSystemColors.WindowColor);
         }
-        else if (_isDark)
+        else if (_isDark = IsDarkMode())
         {
             Set("WindowBackground", "#101419");
             Set("CardBackground", "#1A2027");
@@ -127,6 +143,16 @@ public sealed class SystemThemeManager : IDisposable
             return false;
         }
     }
+
+    private bool IsDarkMode() => _mode switch
+    {
+        AppThemeMode.Dark => true,
+        AppThemeMode.Light => false,
+        _ => IsWindowsDarkMode()
+    };
+
+    private static AppThemeMode NormalizeMode(AppThemeMode mode) =>
+        Enum.IsDefined(mode) ? mode : AppThemeMode.System;
 
     private void ApplyNativeTitleBar(Window window)
     {

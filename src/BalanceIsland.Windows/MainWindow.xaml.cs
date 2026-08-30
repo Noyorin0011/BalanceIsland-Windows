@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using MessageBox = System.Windows.MessageBox;
 using MessageBoxButton = System.Windows.MessageBoxButton;
 using MessageBoxImage = System.Windows.MessageBoxImage;
@@ -14,6 +16,8 @@ public partial class MainWindow : Window
     private readonly bool _isWindows11;
     private bool _updatingIslandMode;
     private bool _loadingControls;
+    private string? _preferredDisplayGroupId;
+    private readonly App? _app;
 
     public event EventHandler<bool>? IslandVisibilityRequested;
     public event EventHandler<IslandDisplayMode>? IslandDisplayModeRequested;
@@ -22,12 +26,10 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _coordinator = coordinator;
+        _app = System.Windows.Application.Current as App;
         _isWindows11 = OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
 
-        ProviderBox.ItemsSource = Enum.GetValues<Provider>()
-            .Select(value => new ProviderChoice(value, value.DisplayName()))
-            .ToArray();
-        ProviderBox.SelectedIndex = 0;
+        SetProviderChoices(ProviderCatalog.All, ProviderCatalog.All[0].Provider);
 
         IslandModeBox.ItemsSource = _isWindows11
             ? new[] { new IslandModeChoice(IslandDisplayMode.Floating, "透明悬浮窗") }
@@ -61,15 +63,74 @@ public partial class MainWindow : Window
             new IslandSizeChoice(IslandSizePreset.Custom, "自定义")
         };
 
-        EnvironmentVariablesText.Text = EnvironmentCredentialDiscovery.SupportedVariablesText;
-        EnvironmentLimitationsText.Text = EnvironmentCredentialDiscovery.LimitationsText;
+        ThemeModeBox.ItemsSource = new[]
+        {
+            new AppThemeChoice(AppThemeMode.System, "跟随系统"),
+            new AppThemeChoice(AppThemeMode.Light, "浅色"),
+            new AppThemeChoice(AppThemeMode.Dark, "深色")
+        };
+
+        IslandPaletteBox.ItemsSource = new[]
+        {
+            new IslandPaletteChoice(IslandColorTheme.Classic, "经典"),
+            new IslandPaletteChoice(IslandColorTheme.Mint, "薄荷"),
+            new IslandPaletteChoice(IslandColorTheme.Sky, "天空"),
+            new IslandPaletteChoice(IslandColorTheme.Coral, "珊瑚"),
+            new IslandPaletteChoice(IslandColorTheme.Lime, "青柠"),
+            new IslandPaletteChoice(IslandColorTheme.Custom, "自定义")
+        };
+
+        DisplayGroupModeBox.ItemsSource = new[]
+        {
+            new IslandGroupModeChoice(IslandGroupMode.Rotation, "轮播"),
+            new IslandGroupModeChoice(IslandGroupMode.Aggregate, "聚合")
+        };
+
+        EnvironmentProviderGrid.ItemsSource = ProviderCatalog.All;
 
         _coordinator.StateChanged += Coordinator_StateChanged;
+        if (_app is not null) _app.NotificationStatusChanged += App_NotificationStatusChanged;
+        Closed += MainWindow_Closed;
+        Loaded += MainWindow_Loaded;
         RefreshRows();
         UpdateIslandControls(_coordinator.State.IslandEnabled, _coordinator.State.IslandDisplayMode);
     }
 
     private void Coordinator_StateChanged(object? sender, EventArgs e) => Dispatcher.Invoke(RefreshRows);
+
+    private void App_NotificationStatusChanged(object? sender, EventArgs e)
+    {
+        if (Dispatcher.CheckAccess())
+            UpdateNotificationChannelStatus();
+        else
+            Dispatcher.BeginInvoke(UpdateNotificationChannelStatus);
+    }
+
+    private void MainWindow_Closed(object? sender, EventArgs e)
+    {
+        if (_app is not null) _app.NotificationStatusChanged -= App_NotificationStatusChanged;
+        _coordinator.StateChanged -= Coordinator_StateChanged;
+    }
+
+    private void ProviderSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        var selected = ProviderBox.SelectedValue is Provider provider ? provider : (Provider?)null;
+        SetProviderChoices(ProviderCatalog.Search(ProviderSearchBox.Text), selected);
+    }
+
+    private void SetProviderChoices(IReadOnlyList<ProviderDefinition> providers, Provider? preferred)
+    {
+        ProviderBox.ItemsSource = providers;
+        ProviderBox.SelectedValue = providers.Any(definition => definition.Provider == preferred)
+            ? preferred
+            : providers.FirstOrDefault()?.Provider;
+    }
+
+    private void MainWindow_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (_coordinator.State.EnvironmentAutoImportEnabled)
+            Dispatcher.BeginInvoke(OpenEnvironmentImportDialog);
+    }
 
     private async void AddAccount_Click(object sender, RoutedEventArgs e)
     {
@@ -147,7 +208,9 @@ public partial class MainWindow : Window
         var account = _coordinator.State.Accounts.FirstOrDefault(item => item.Id == row.Id);
         if (account is null) return;
 
-        var editor = new AccountEditWindow(account) { Owner = this };
+        var editor = new AccountEditWindow(
+            account,
+            hasActiveDisplayGroup: _coordinator.State.ActiveDisplayGroupId is not null) { Owner = this };
         (System.Windows.Application.Current as App)?.TrackWindow(editor);
         if (editor.ShowDialog() != true) return;
 
@@ -156,6 +219,7 @@ public partial class MainWindow : Window
         {
             await _coordinator.UpdateAccountAsync(account.Id, editor.AccountLabel, editor.ApiKey,
                 editor.ManualBalance, editor.RefreshMinutes);
+            _coordinator.SetAccountShowInIsland(account.Id, editor.ShowInIsland);
             StatusText.Text = string.IsNullOrWhiteSpace(editor.ApiKey)
                 ? "账户设置已保存；继续使用原 API 凭据。"
                 : "账户设置及新 API Key 已保存。";
@@ -204,6 +268,252 @@ public partial class MainWindow : Window
             : "编辑模式已关闭：浮岛恢复固定并穿透鼠标点击。";
     }
 
+    private void ThemeModeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loadingControls || ThemeModeBox.SelectedValue is not AppThemeMode mode) return;
+        _coordinator.SetThemeMode(mode);
+        StatusText.Text = mode switch
+        {
+            AppThemeMode.System => "已切换为跟随 Windows 系统主题。",
+            AppThemeMode.Light => "已切换为浅色主题。",
+            _ => "已切换为深色主题。"
+        };
+    }
+
+    private void IslandPaletteBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loadingControls || IslandPaletteBox.SelectedValue is not IslandColorTheme theme) return;
+        _coordinator.SetIslandColorTheme(theme);
+        UpdateCustomColorControls();
+        StatusText.Text = theme == IslandColorTheme.Custom
+            ? "已启用自定义浮岛配色；请填写四种状态颜色后保存。"
+            : "浮岛调色板已应用。";
+    }
+
+    private void CustomColorBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_loadingControls) return;
+        UpdateCustomColorPreviews();
+    }
+
+    private void SaveCustomColors_Click(object sender, RoutedEventArgs e)
+    {
+        if (_loadingControls || _coordinator.State.IslandColorTheme != IslandColorTheme.Custom) return;
+        try
+        {
+            _coordinator.SetCustomIslandColors(
+                CustomNormalColorBox.Text,
+                CustomAnomalyColorBox.Text,
+                CustomWarning15ColorBox.Text,
+                CustomCriticalColorBox.Text);
+            StatusText.Text = "自定义浮岛配色已保存。";
+        }
+        catch (ArgumentException exception)
+        {
+            MessageBox.Show(this, exception.Message, "颜色格式不正确", MessageBoxButton.OK, MessageBoxImage.Warning);
+            StatusText.Text = "自定义颜色未保存。";
+        }
+    }
+
+    private void UpdateCustomColorControls()
+    {
+        var isCustom = _coordinator.State.IslandColorTheme == IslandColorTheme.Custom;
+        CustomColorFieldsPanel.IsEnabled = isCustom;
+        UpdateCustomColorPreviews();
+    }
+
+    private void UpdateCustomColorPreviews()
+    {
+        SetColorPreview(CustomNormalColorPreview, CustomNormalColorBox.Text);
+        SetColorPreview(CustomAnomalyColorPreview, CustomAnomalyColorBox.Text);
+        SetColorPreview(CustomWarning15ColorPreview, CustomWarning15ColorBox.Text);
+        SetColorPreview(CustomCriticalColorPreview, CustomCriticalColorBox.Text);
+    }
+
+    private static void SetColorPreview(Border preview, string color)
+    {
+        if (IslandColorPalettes.TryNormalizeColor(color, out var normalized) &&
+            System.Windows.Media.ColorConverter.ConvertFromString(normalized) is System.Windows.Media.Color parsed)
+        {
+            preview.Background = new SolidColorBrush(parsed);
+            return;
+        }
+
+        preview.Background = System.Windows.Media.Brushes.Transparent;
+    }
+
+    private void DisplayGroupBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loadingControls) return;
+        if (DisplayGroupBox.SelectedValue is string groupId)
+            LoadDisplayGroup(groupId);
+        else
+            PrepareNewDisplayGroup();
+    }
+
+    private void DisplayGroupSelection_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loadingControls) return;
+        UpdateDisplayGroupValidation();
+    }
+
+    private void NewDisplayGroup_Click(object sender, RoutedEventArgs e)
+    {
+        if (_loadingControls) return;
+        _loadingControls = true;
+        try
+        {
+            DisplayGroupBox.SelectedItem = null;
+            DisplayGroupNameBox.Text = "";
+            DisplayGroupModeBox.SelectedValue = IslandGroupMode.Rotation;
+            DisplayGroupAccountsList.UnselectAll();
+        }
+        finally
+        {
+            _loadingControls = false;
+        }
+        UpdateDisplayGroupValidation();
+        StatusText.Text = "请填写分组名称并选择至少一个账户。";
+    }
+
+    private void SaveDisplayGroup_Click(object sender, RoutedEventArgs e)
+    {
+        if (_loadingControls || DisplayGroupModeBox.SelectedValue is not IslandGroupMode mode) return;
+        try
+        {
+            var accountIds = SelectedDisplayGroupAccountIds();
+            if (DisplayGroupBox.SelectedValue is string groupId)
+            {
+                _preferredDisplayGroupId = groupId;
+                _coordinator.UpdateDisplayGroup(groupId, DisplayGroupNameBox.Text, mode, accountIds);
+                StatusText.Text = "浮岛显示分组已保存。";
+            }
+            else
+            {
+                var group = _coordinator.CreateDisplayGroup(DisplayGroupNameBox.Text, mode, accountIds);
+                _preferredDisplayGroupId = group.Id;
+                RefreshRows();
+                StatusText.Text = $"已创建分组“{group.Name}”。";
+            }
+        }
+        catch (ArgumentException exception)
+        {
+            MessageBox.Show(this, exception.Message, "分组无法保存", MessageBoxButton.OK, MessageBoxImage.Warning);
+            StatusText.Text = "分组未保存，请检查名称和成员。";
+        }
+    }
+
+    private void DeleteDisplayGroup_Click(object sender, RoutedEventArgs e)
+    {
+        if (_loadingControls || DisplayGroupBox.SelectedValue is not string groupId) return;
+        var name = _coordinator.State.DisplayGroups.FirstOrDefault(group => group.Id == groupId)?.Name ?? "该分组";
+        if (MessageBox.Show(this, $"删除“{name}”？这不会删除任何账户。", "确认删除分组",
+                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+
+        try
+        {
+            _coordinator.DeleteDisplayGroup(groupId);
+            StatusText.Text = "分组已删除。";
+        }
+        catch (ArgumentException exception)
+        {
+            MessageBox.Show(this, exception.Message, "删除分组失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void SetActiveDisplayGroup_Click(object sender, RoutedEventArgs e)
+    {
+        if (_loadingControls || DisplayGroupBox.SelectedValue is not string groupId) return;
+        try
+        {
+            _coordinator.SetActiveDisplayGroup(groupId);
+            StatusText.Text = "已设为浮岛活动分组。";
+        }
+        catch (ArgumentException exception)
+        {
+            MessageBox.Show(this, exception.Message, "无法设为活动分组", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void ClearActiveDisplayGroup_Click(object sender, RoutedEventArgs e)
+    {
+        if (_loadingControls || _coordinator.State.ActiveDisplayGroupId is null) return;
+        _coordinator.SetActiveDisplayGroup(null);
+        StatusText.Text = "已停用分组，浮岛将使用默认账户显示设置。";
+    }
+
+    private void LoadDisplayGroup(string groupId)
+    {
+        var group = _coordinator.State.DisplayGroups.FirstOrDefault(item => item.Id == groupId);
+        if (group is null) return;
+
+        _loadingControls = true;
+        try
+        {
+            DisplayGroupNameBox.Text = group.Name;
+            DisplayGroupModeBox.SelectedValue = group.Mode;
+            DisplayGroupAccountsList.UnselectAll();
+            foreach (var choice in DisplayGroupAccountsList.Items.OfType<AccountChoice>()
+                         .Where(choice => group.AccountIds.Contains(choice.Id, StringComparer.Ordinal)))
+                DisplayGroupAccountsList.SelectedItems.Add(choice);
+        }
+        finally
+        {
+            _loadingControls = false;
+        }
+        UpdateDisplayGroupValidation();
+    }
+
+    private void PrepareNewDisplayGroup()
+    {
+        _loadingControls = true;
+        try
+        {
+            DisplayGroupNameBox.Text = "";
+            DisplayGroupModeBox.SelectedValue = IslandGroupMode.Rotation;
+            DisplayGroupAccountsList.UnselectAll();
+        }
+        finally
+        {
+            _loadingControls = false;
+        }
+        UpdateDisplayGroupValidation();
+    }
+
+    private string[] SelectedDisplayGroupAccountIds() => DisplayGroupAccountsList.SelectedItems
+        .OfType<AccountChoice>()
+        .Select(choice => choice.Id)
+        .ToArray();
+
+    private void UpdateDisplayGroupValidation()
+    {
+        var providers = SelectedDisplayGroupAccountIds()
+            .Select(id => _coordinator.State.Accounts.FirstOrDefault(account => account.Id == id)?.Provider)
+            .Where(provider => provider is not null)
+            .Distinct()
+            .ToArray();
+        var isAggregate = DisplayGroupModeBox.SelectedValue is IslandGroupMode.Aggregate;
+        var invalidAggregate = DisplayGroupEditorValidation.HasMixedProviders(
+            DisplayGroupModeBox.SelectedValue,
+            providers);
+
+        SaveDisplayGroupButton.IsEnabled = !invalidAggregate;
+        DisplayGroupValidationText.Text = invalidAggregate
+            ? "聚合分组只能包含同一 Provider 的账户。"
+            : isAggregate
+                ? "聚合会合计同一 Provider 账户的余额；币种不一致时浮岛会说明无法汇总。"
+                : "轮播会按所选账户依次显示，可混合不同 Provider。";
+        DeleteDisplayGroupButton.IsEnabled = DisplayGroupBox.SelectedValue is string;
+        SetActiveDisplayGroupButton.IsEnabled = DisplayGroupBox.SelectedValue is string;
+        ClearActiveDisplayGroupButton.IsEnabled = _coordinator.State.ActiveDisplayGroupId is not null;
+        var activeGroup = _coordinator.State.ActiveDisplayGroupId is { } activeId
+            ? _coordinator.State.DisplayGroups.FirstOrDefault(group => group.Id == activeId)
+            : null;
+        ActiveDisplayGroupStatusText.Text = activeGroup is null
+            ? "当前显示：默认账户显示（按账户的“在浮岛显示”设置）。"
+            : $"当前活动分组：{activeGroup.Name}。可停用分组并恢复默认账户显示。";
+    }
+
     private void PositionPresetBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_loadingControls || PositionPresetBox.SelectedValue is not IslandPositionPreset preset) return;
@@ -249,7 +559,6 @@ public partial class MainWindow : Window
         {
             AlertEnabledBox.IsChecked = account.AlertEnabled;
             WarningLineBox.Text = account.WarningLine.ToString("0.##", CultureInfo.InvariantCulture);
-            DropStepBox.Text = account.DropStep.ToString("0.##", CultureInfo.InvariantCulture);
             AnomalyEnabledBox.IsChecked = account.AnomalyEnabled;
             AnomalyThresholdBox.Text = account.AnomalyThreshold.ToString("0.##", CultureInfo.InvariantCulture);
             AnomalyPercentBox.Text = account.AnomalyPercentThreshold.ToString("0.##", CultureInfo.InvariantCulture);
@@ -266,7 +575,6 @@ public partial class MainWindow : Window
     {
         if (AlertAccountBox.SelectedValue is not string id) return;
         if (!TryNonNegativeDouble(WarningLineBox.Text, out var warningLine) ||
-            !TryPositiveDouble(DropStepBox.Text, out var dropStep) ||
             !TryPositiveDouble(AnomalyThresholdBox.Text, out var anomalyThreshold) ||
             !TryPositiveDouble(AnomalyPercentBox.Text, out var anomalyPercent) ||
             !int.TryParse(AnomalyCooldownBox.Text, out var cooldown) || cooldown is < 1 or > 10080 ||
@@ -278,26 +586,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        _coordinator.UpdateAlertSettings(id, AlertEnabledBox.IsChecked == true, warningLine, dropStep,
+        _coordinator.UpdateAlertSettings(id, AlertEnabledBox.IsChecked == true, warningLine,
             AnomalyEnabledBox.IsChecked == true, anomalyThreshold, anomalyPercent, mode, cooldown);
         StatusText.Text = "余额告警设置已保存，并已重置该账户的告警参考状态。";
-    }
-
-    private void DisplayAccountBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_loadingControls || DisplayAccountBox.SelectedValue is not string id) return;
-        var account = _coordinator.State.Accounts.FirstOrDefault(item => item.Id == id);
-        if (account is null) return;
-        _loadingControls = true;
-        DisplayAccountVisibleBox.IsChecked = account.ShowInIsland;
-        _loadingControls = false;
-    }
-
-    private void SaveDisplayAccount_Click(object sender, RoutedEventArgs e)
-    {
-        if (DisplayAccountBox.SelectedValue is not string id) return;
-        IslandAccountSelection.SetVisible(_coordinator, id, DisplayAccountVisibleBox.IsChecked == true);
-        StatusText.Text = "浮岛显示账户设置已保存。";
     }
 
     private void EnvironmentAutoImportBox_Changed(object sender, RoutedEventArgs e)
@@ -305,16 +596,71 @@ public partial class MainWindow : Window
         if (_loadingControls) return;
         _coordinator.SetEnvironmentAutoImport(EnvironmentAutoImportBox.IsChecked == true);
         StatusText.Text = EnvironmentAutoImportBox.IsChecked == true
-            ? "已启用环境 API 自动发现。" : "已停用环境 API 自动发现；已添加的环境账户仍保留。";
+            ? "启动后将提示扫描环境 API；仍需确认勾选后才会导入。"
+            : "已停用启动扫描提示；已添加的环境账户仍保留。";
     }
 
-    private async void ScanEnvironment_Click(object sender, RoutedEventArgs e)
+    private void ScanEnvironment_Click(object sender, RoutedEventArgs e) => OpenEnvironmentImportDialog();
+
+    private void NotificationSettings_Changed(object sender, RoutedEventArgs e)
     {
-        var result = _coordinator.ImportEnvironmentAccounts();
+        if (_loadingControls) return;
+        _coordinator.SetNotificationSettings(
+            NotifyWarning15Box.IsChecked == true,
+            NotifyCriticalBox.IsChecked == true,
+            NotifyAnomalyBox.IsChecked == true);
+        StatusText.Text = "通知类型设置已保存。";
+    }
+
+    private void SendTestNotification_Click(object sender, RoutedEventArgs e)
+    {
+        var result = (System.Windows.Application.Current as App)?.SendTestNotification();
+        UpdateNotificationChannelStatus();
+        StatusText.Text = result == NotificationDeliveryResult.NativeToast
+            ? "已请求发送 Windows 测试通知；是否显示仍由系统通知设置决定。"
+            : "Windows 原生通知不可用，已尝试使用托盘通知。";
+    }
+
+    private void OpenNotificationSettings_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "ms-settings:notifications",
+                UseShellExecute = true
+            });
+        }
+        catch (Exception)
+        {
+            MessageBox.Show(this, "无法打开 Windows 通知设置。请在系统设置中搜索“通知”。",
+                "Balance Island", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void UpdateNotificationChannelStatus()
+    {
+        var status = (System.Windows.Application.Current as App)?.NotificationStatus
+            ?? NotificationChannelStatus.Unavailable;
+        NotificationChannelStatusText.Text = status switch
+        {
+            NotificationChannelStatus.WindowsImportantNotification => "通知通道：Windows 重要通知",
+            NotificationChannelStatus.WindowsNotification => "通知通道：普通 Windows 通知",
+            NotificationChannelStatus.TrayFallback => "通知通道：托盘回退",
+            _ => "通知通道：不可用"
+        };
+    }
+
+    private void OpenEnvironmentImportDialog()
+    {
+        var candidates = EnvironmentCredentialDiscovery.Scan();
+        var dialog = new EnvironmentImportWindow(candidates, _coordinator.State.Accounts) { Owner = this };
+        (System.Windows.Application.Current as App)?.TrackWindow(dialog);
+        if (dialog.ShowDialog() != true) return;
+
+        var result = _coordinator.ImportEnvironmentAccounts(dialog.SelectedCandidates);
         var added = result.AddedProviders.Count == 0 ? "无新增" : string.Join("、", result.AddedProviders);
-        StatusText.Text = $"扫描到 {result.FoundCount} 个受支持环境凭据；新增：{added}。";
-        if (result.AddedProviders.Count > 0)
-            await _coordinator.RefreshDueAsync(force: true);
+        StatusText.Text = $"扫描到 {candidates.Count} 个受支持环境凭据；新增：{added}。";
     }
 
     public void UpdateIslandButton(bool visible) =>
@@ -356,7 +702,7 @@ public partial class MainWindow : Window
     {
         var previousSelected = (AccountsGrid.SelectedItem as AccountRow)?.Id;
         var previousAlert = AlertAccountBox.SelectedValue as string;
-        var previousDisplay = DisplayAccountBox.SelectedValue as string;
+        var previousGroup = DisplayGroupBox.SelectedValue as string;
         var accounts = _coordinator.State.Accounts.ToDictionary(account => account.Id);
 
         var rows = _coordinator.CurrentSnapshots.Select(snapshot =>
@@ -372,30 +718,48 @@ public partial class MainWindow : Window
                 account.IsEnabled ? snapshot.SecondaryText : "后台刷新、告警和浮岛显示已暂停",
                 snapshot.UpdatedAt == default ? "—" : snapshot.UpdatedAt.LocalDateTime.ToString("MM-dd HH:mm"));
         }).ToArray();
-        AccountsGrid.ItemsSource = rows;
-        AccountsGrid.SelectedItem = rows.FirstOrDefault(row => row.Id == previousSelected);
-        UpdateAccountActionButtons();
-
         var choices = _coordinator.State.Accounts
             .Select(account => new AccountChoice(account.Id,
                 $"{account.Provider.DisplayName()} · {account.DisplayLabel}"))
             .ToArray();
+        var groups = _coordinator.State.DisplayGroups
+            .Select(group => new DisplayGroupChoice(group.Id,
+                $"{group.Name} · {(group.Mode == IslandGroupMode.Aggregate ? "聚合" : "轮播")}"))
+            .ToArray();
+        var selectedGroup = DisplayGroupSelection.Resolve(
+            _coordinator.State.DisplayGroups,
+            previousGroup,
+            _preferredDisplayGroupId,
+            _coordinator.State.ActiveDisplayGroupId);
+        _preferredDisplayGroupId = null;
 
         _loadingControls = true;
         try
         {
+            AccountsGrid.ItemsSource = rows;
+            AccountsGrid.SelectedItem = rows.FirstOrDefault(row => row.Id == previousSelected);
+            UpdateAccountActionButtons();
             AlertAccountBox.ItemsSource = choices;
-            DisplayAccountBox.ItemsSource = choices;
+            DisplayGroupAccountsList.ItemsSource = choices;
+            DisplayGroupBox.ItemsSource = groups;
             AlertAccountBox.SelectedValue = choices.Any(item => item.Id == previousAlert)
                 ? previousAlert : choices.FirstOrDefault()?.Id;
-            DisplayAccountBox.SelectedValue = choices.Any(item => item.Id == previousDisplay)
-                ? previousDisplay : choices.FirstOrDefault()?.Id;
+            DisplayGroupBox.SelectedValue = selectedGroup;
+            ThemeModeBox.SelectedValue = _coordinator.State.ThemeMode;
+            IslandPaletteBox.SelectedValue = _coordinator.State.IslandColorTheme;
+            CustomNormalColorBox.Text = _coordinator.State.CustomNormalColor;
+            CustomAnomalyColorBox.Text = _coordinator.State.CustomAnomalyColor;
+            CustomWarning15ColorBox.Text = _coordinator.State.CustomWarning15Color;
+            CustomCriticalColorBox.Text = _coordinator.State.CustomCriticalColor;
             EditIslandBox.IsChecked = _coordinator.State.IslandEditMode;
             PositionPresetBox.SelectedValue = _coordinator.State.IslandPositionPreset;
             SizePresetBox.SelectedValue = _coordinator.State.IslandSizePreset;
             EnvironmentAutoImportBox.IsChecked = _coordinator.State.EnvironmentAutoImportEnabled;
             IslandWidthBox.Text = _coordinator.State.IslandWidth.ToString("0", CultureInfo.InvariantCulture);
             IslandHeightBox.Text = _coordinator.State.IslandHeight.ToString("0", CultureInfo.InvariantCulture);
+            NotifyWarning15Box.IsChecked = _coordinator.State.NotifyWarning15;
+            NotifyCriticalBox.IsChecked = _coordinator.State.NotifyCritical;
+            NotifyAnomalyBox.IsChecked = _coordinator.State.NotifyAnomaly;
         }
         finally
         {
@@ -403,16 +767,10 @@ public partial class MainWindow : Window
         }
 
         if (AlertAccountBox.SelectedValue is string alertId) LoadAlertAccount(alertId);
-        if (DisplayAccountBox.SelectedValue is string displayId)
-        {
-            var account = _coordinator.State.Accounts.FirstOrDefault(item => item.Id == displayId);
-            if (account is not null)
-            {
-                _loadingControls = true;
-                DisplayAccountVisibleBox.IsChecked = account.ShowInIsland;
-                _loadingControls = false;
-            }
-        }
+        if (DisplayGroupBox.SelectedValue is string groupId) LoadDisplayGroup(groupId);
+        else PrepareNewDisplayGroup();
+        UpdateCustomColorControls();
+        UpdateNotificationChannelStatus();
     }
 
     private void SetBusy(string message, bool busy)
@@ -454,5 +812,9 @@ public sealed record AnomalyModeChoice(AnomalyMode Value, string Display);
 public sealed record IslandPositionChoice(IslandPositionPreset Value, string Display);
 public sealed record IslandSizeChoice(IslandSizePreset Value, string Display);
 public sealed record AccountChoice(string Id, string Display);
+public sealed record AppThemeChoice(AppThemeMode Value, string Display);
+public sealed record IslandPaletteChoice(IslandColorTheme Value, string Display);
+public sealed record IslandGroupModeChoice(IslandGroupMode Value, string Display);
+public sealed record DisplayGroupChoice(string Id, string Display);
 public sealed record AccountRow(
     string Id, bool IsEnabled, string Provider, string Label, string Source, string Primary, string Secondary, string Updated);

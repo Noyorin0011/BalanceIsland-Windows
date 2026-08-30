@@ -43,11 +43,11 @@
                 <RowDefinition Height="*" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
-            <TextBlock x:Name="IslandTitleText" Grid.Row="0" Foreground="White"
+            <TextBlock x:Name="IslandTitleText" Grid.Row="0" Foreground="{DynamicResource PrimaryText}"
                        FontFamily="Segoe UI" FontSize="11" FontWeight="SemiBold"
                        VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                        Text="Balance Island" />
-            <TextBlock x:Name="IslandUsageText" Grid.Row="1" Foreground="White" Opacity="0.86"
+            <TextBlock x:Name="IslandUsageText" Grid.Row="1" Foreground="{DynamicResource PrimaryText}" Opacity="0.86"
                        FontFamily="Segoe UI" FontSize="10" VerticalAlignment="Center"
                        TextTrimming="CharacterEllipsis" Text="请添加账户" />
         </Grid>

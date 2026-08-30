@@ -193,6 +193,26 @@
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
 
+        <Style TargetType="ListBox">
+            <Setter Property="Background" Value="{DynamicResource ControlBackground}" />
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+
+        <Style TargetType="ListBoxItem">
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}" />
+            <Setter Property="Padding" Value="8,5" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource ControlHoverBackground}" />
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource SelectionBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
         <Style TargetType="ScrollViewer">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="{DynamicResource PrimaryText}" />
