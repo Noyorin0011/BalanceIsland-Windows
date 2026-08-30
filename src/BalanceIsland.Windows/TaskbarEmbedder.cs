@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Interop;
 using Microsoft.Win32;
@@ -66,7 +65,7 @@ public sealed class TaskbarEmbedder
         if (dpi == 0) dpi = 96;
         var scale = dpi / 96d;
 
-        var island = Application.Current?.Windows
+        var island = System.Windows.Application.Current?.Windows
             .OfType<TaskbarIslandWindow>()
             .FirstOrDefault(window => window.IsVisible);
         var widthDip = island is null
