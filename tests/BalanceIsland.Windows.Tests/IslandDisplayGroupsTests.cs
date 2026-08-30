@@ -121,6 +121,48 @@ public sealed class IslandDisplayGroupsTests
     }
 
     [Fact]
+    public void Aggregate_excludes_failed_members_with_a_manual_balance_and_reports_the_failure()
+    {
+        // A member whose key failed may still carry a manual balance via
+        // ApplyUserSettings; it must not be summed and the failure must be visible.
+        var snapshots = new[]
+        {
+            new BalanceSnapshot
+            {
+                CredentialId = "a",
+                Provider = Provider.DeepSeek,
+                Status = SnapshotStatus.Error,
+                BalanceAmount = 50,
+                CurrencyCode = "USD"
+            },
+            Snapshot("b", 5, 1, "USD")
+        };
+
+        var item = Aggregate(snapshots);
+
+        Assert.Equal(5, item.BalanceAmount);
+        Assert.Equal(1, item.TodayUsedAmount);
+        Assert.Contains("错误 1 个 Key", item.SecondaryText);
+    }
+
+    [Fact]
+    public void Aggregate_counts_pending_members_separately_from_failed_ones()
+    {
+        var snapshots = new[]
+        {
+            new BalanceSnapshot { CredentialId = "a", Provider = Provider.DeepSeek, Status = SnapshotStatus.Ok },
+            new BalanceSnapshot { CredentialId = "b", Provider = Provider.DeepSeek, Status = SnapshotStatus.NotConfigured },
+            new BalanceSnapshot { CredentialId = "c", Provider = Provider.DeepSeek, Status = SnapshotStatus.Error }
+        };
+
+        var item = Aggregate(snapshots);
+
+        Assert.Contains("有效 1", item.PrimaryText);
+        Assert.Contains("错误 1", item.PrimaryText);
+        Assert.Contains("未刷新 1", item.PrimaryText);
+    }
+
+    [Fact]
     public void Removing_account_cleans_all_groups_and_deleting_active_group_clears_selection()
     {
         var state = StateWith(DeepSeekAccount("a"));

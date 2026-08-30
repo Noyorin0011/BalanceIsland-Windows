@@ -438,7 +438,7 @@ public sealed class BalanceCoordinator : IDisposable
                 catch (Exception exception)
                 {
                     schedule.NextScheduled = DateTimeOffset.Now.AddMinutes(account.EffectiveRefreshMinutes);
-                    State.Snapshots[account.Id] = Error(account, ReadableError(exception));
+                    State.Snapshots[account.Id] = Error(account, ReadableError(exception, key));
                 }
                 finally
                 {
@@ -634,13 +634,20 @@ public sealed class BalanceCoordinator : IDisposable
         _ => "余额通知"
     };
 
-    private static string ReadableError(Exception exception) => exception switch
+    private static string ReadableError(Exception exception, string? credentialKey = null)
     {
-        TaskCanceledException => "网络请求超时",
-        HttpRequestException => "网络连接失败",
-        ProviderApiException api => api.Message,
-        _ => exception.Message.Length > 120 ? exception.Message[..120] : exception.Message
-    };
+        var message = exception switch
+        {
+            TaskCanceledException => "网络请求超时",
+            HttpRequestException => "网络连接失败",
+            ProviderApiException api => api.Message,
+            _ => exception.Message
+        };
+        // Provider responses may echo the credential back (e.g. 401 "invalid key <key>").
+        // Redact it before it can reach state.json, the island or notifications.
+        message = ApiKeySanitizer.RedactSecret(message, credentialKey);
+        return message.Length > 120 ? message[..120] : message;
+    }
 
     private static string NormalizeIslandColor(string color, string parameterName)
     {
