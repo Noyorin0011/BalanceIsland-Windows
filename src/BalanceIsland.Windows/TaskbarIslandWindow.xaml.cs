@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -52,6 +53,7 @@ public partial class TaskbarIslandWindow : Window
     private readonly DispatcherTimer _eventSettleTimer;
     private readonly WinEventDelegate _winEventDelegate;
     private IslandDisplayMode _displayMode;
+    private bool _taskbarVertical;
     private uint _taskbarCreatedMessage;
     private string _lastModeStatus = "";
     private FloatingPlacement? _lastFloatingPlacement;
@@ -285,9 +287,25 @@ public partial class TaskbarIslandWindow : Window
             ProviderIconBackground.Background = new MediaSolidColorBrush(
                 MediaColor.FromRgb(255, 190, 70));
             ProviderIconBackground.Padding = new Thickness(0);
-            IslandTitleText.Text = "Balance Island";
-            IslandUsageText.Text = "没有启用显示的账户";
-            SetTextColor(palette.Normal);
+            if (_taskbarVertical)
+            {
+                IslandTitleText.Visibility = Visibility.Collapsed;
+                IslandUsageText.Visibility = Visibility.Collapsed;
+                VerticalLayout.Visibility = Visibility.Visible;
+                VerticalLabelText.Text = "Balance Island";
+                VerticalBalanceText.Text = "没有启用显示";
+                VerticalUsageText.Text = "";
+                ApplyTextColor(VerticalLabelText, VerticalBalanceText, VerticalUsageText, palette.Normal);
+            }
+            else
+            {
+                VerticalLayout.Visibility = Visibility.Collapsed;
+                IslandTitleText.Visibility = Visibility.Visible;
+                IslandUsageText.Visibility = Visibility.Visible;
+                IslandTitleText.Text = "Balance Island";
+                IslandUsageText.Text = "没有启用显示的账户";
+                SetTextColor(palette.Normal);
+            }
             return;
         }
 
@@ -327,11 +345,49 @@ public partial class TaskbarIslandWindow : Window
                     : new Thickness(0);
         }
 
-        IslandTitleText.Text = item.Title;
-        IslandUsageText.Text = string.IsNullOrWhiteSpace(item.SecondaryText)
-            ? item.PrimaryText
-            : $"{item.PrimaryText} · {item.SecondaryText}";
-        SetTextColor(ColorFor(item.VisualState, palette));
+        if (_taskbarVertical)
+        {
+            // Vertical taskbar: three compact lines — account label/suffix, balance, usage.
+            IslandTitleText.Visibility = Visibility.Collapsed;
+            IslandUsageText.Visibility = Visibility.Collapsed;
+            VerticalLayout.Visibility = Visibility.Visible;
+            VerticalLabelText.Text = string.IsNullOrWhiteSpace(item.DetailLabel)
+                ? item.Title
+                : item.DetailLabel;
+            VerticalBalanceText.Text = item.PrimaryText;
+            // Strip a leading "今日 " (today) marker for the compact vertical layout.
+            VerticalUsageText.Text = IslandDisplayGroups.StripTodayMarker(item.SecondaryText);
+            ApplyTextColor(VerticalLabelText, VerticalBalanceText, VerticalUsageText,
+                ColorFor(item.VisualState, palette));
+        }
+        else
+        {
+            VerticalLayout.Visibility = Visibility.Collapsed;
+            IslandTitleText.Visibility = Visibility.Visible;
+            IslandUsageText.Visibility = Visibility.Visible;
+            IslandTitleText.Text = item.Title;
+            IslandUsageText.Text = string.IsNullOrWhiteSpace(item.SecondaryText)
+                ? item.PrimaryText
+                : $"{item.PrimaryText} · {item.SecondaryText}";
+            SetTextColor(ColorFor(item.VisualState, palette));
+        }
+    }
+
+    private static string StripToday(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return "";
+        var trimmed = text.TrimStart();
+        return trimmed.StartsWith("今日", StringComparison.Ordinal)
+            ? trimmed.Substring(2).TrimStart()
+            : text;
+    }
+
+    private void ApplyTextColor(TextBlock a, TextBlock b, TextBlock c, string color)
+    {
+        var brush = new MediaSolidColorBrush((MediaColor)MediaColorConverter.ConvertFromString(color));
+        a.Foreground = brush;
+        b.Foreground = brush;
+        c.Foreground = brush;
     }
 
     private void SetTextColor(string color)
@@ -455,6 +511,14 @@ public partial class TaskbarIslandWindow : Window
         var dpi = GetDpiForWindow(taskbar);
         if (dpi == 0) dpi = 96;
         var scale = dpi / 96d;
+        var taskbarW = taskbarRect.Right - taskbarRect.Left;
+        var taskbarH = taskbarRect.Bottom - taskbarRect.Top;
+        var vertical = taskbarH > taskbarW;
+        if (vertical != _taskbarVertical)
+        {
+            _taskbarVertical = vertical;
+            Render();
+        }
         var widthPx = Math.Max(1, (int)Math.Round(size.Width * scale));
         var heightPx = Math.Max(1, (int)Math.Round(size.Height * scale));
         var taskbarWidth = taskbarRect.Right - taskbarRect.Left;

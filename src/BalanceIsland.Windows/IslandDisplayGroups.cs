@@ -33,6 +33,17 @@ public static class DisplayGroupEditorValidation
 
 public static class IslandDisplayGroups
 {
+    // Strips a leading "今日 " (today) marker used in horizontal island text so the compact
+    // vertical-taskbar layout can show just the usage amount ("¥3.00" rather than "今日 ¥3.00").
+    public static string StripTodayMarker(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return "";
+        var trimmed = text.TrimStart();
+        return trimmed.StartsWith("今日", StringComparison.Ordinal)
+            ? trimmed.Substring(2).TrimStart()
+            : text;
+    }
+
     public static IslandDisplayGroup Create(
         AppState state,
         string name,
@@ -118,6 +129,7 @@ public static class IslandDisplayGroups
             return DisplayItem(
                 provider,
                 group.Name,
+                group.Name,
                 "无法汇总",
                 "Provider 不一致，无法汇总",
                 null,
@@ -145,6 +157,7 @@ public static class IslandDisplayGroups
             return DisplayItem(
                 provider,
                 group.Name,
+                group.Name,
                 keyCount,
                 "",
                 null,
@@ -161,6 +174,7 @@ public static class IslandDisplayGroups
         {
             return DisplayItem(
                 provider,
+                group.Name,
                 group.Name,
                 "无法汇总",
                 "币种不一致，无法汇总",
@@ -184,6 +198,7 @@ public static class IslandDisplayGroups
                 : $"{secondary} · 错误 {errorItems.Length} 个 Key";
         return DisplayItem(
             provider,
+            group.Name,
             group.Name,
             balance is null
                 ? $"有效 {items.Count(item => item.Status is not SnapshotStatus.Error and not SnapshotStatus.NotConfigured)} 个 Key"
@@ -209,6 +224,7 @@ public static class IslandDisplayGroups
         return DisplayItem(
             snapshot.Provider,
             $"{snapshot.Provider.DisplayName()} · {snapshot.AccountDisplayLabel}",
+            snapshot.AccountDisplayLabel,
             snapshot.PrimaryText,
             secondary,
             snapshot.BalanceAmount,
@@ -257,6 +273,7 @@ public static class IslandDisplayGroups
     private static IslandDisplayItem DisplayItem(
         Provider? provider,
         string title,
+        string detailLabel,
         string primaryText,
         string secondaryText,
         double? balanceAmount,
@@ -267,6 +284,7 @@ public static class IslandDisplayGroups
             Provider = provider,
             IconResourceKey = provider is { } value ? ProviderCatalog.Get(value).IconResourceKey : null,
             Title = title,
+            DetailLabel = detailLabel,
             PrimaryText = primaryText,
             SecondaryText = secondaryText,
             BalanceAmount = balanceAmount,
