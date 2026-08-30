@@ -32,9 +32,6 @@ public sealed class TaskbarEmbedder
     private long _originalStyle;
     private long _originalExStyle;
     private bool _stylesCaptured;
-    private IntPtr _geometryTaskbar;
-    private DateTime _lastGeometryRead;
-    private TaskbarGeometry _cachedGeometry = TaskbarGeometry.Empty;
 
     public bool IsAttached => _window != IntPtr.Zero && IsWindow(_window) &&
                               _taskbar != IntPtr.Zero && GetParent(_window) == _taskbar;
@@ -43,10 +40,36 @@ public sealed class TaskbarEmbedder
     {
         if (taskbar == IntPtr.Zero || !GetWindowRect(taskbar, out var taskbarRect))
             return fallbackLeft;
-        var geometry = ReadGeometryCached(taskbar, taskbarRect);
-        return geometry.WidgetsButton.IsValid
-            ? Math.Max(fallbackLeft, geometry.WidgetsButton.Right + Math.Max(0, gap))
-            : fallbackLeft;
+
+        // Explorer moves Start/Widgets synchronously when taskbar settings change. Read fresh
+        // UIA geometry for every placement pass so the island does not lag behind by a cache TTL.
+        var geometry = ReadGeometry(taskbar, taskbarRect);
+        var margin = Math.Max(0, gap);
+        var islandWidth = GetFloatingIslandWidthPx(taskbar);
+        return TaskbarFloatingPlacement.ResolveLeft(
+            taskbarRect.Left,
+            taskbarRect.Right,
+            islandWidth,
+            margin,
+            geometry.WidgetsButton.IsValid ? geometry.WidgetsButton.Left : null,
+            geometry.WidgetsButton.IsValid ? geometry.WidgetsButton.Right : null);
+    }
+
+    private static int GetFloatingIslandWidthPx(IntPtr taskbar)
+    {
+        var dpi = GetDpiForWindow(taskbar);
+        if (dpi == 0) dpi = 96;
+        var scale = dpi / 96d;
+
+        var island = System.Windows.Application.Current?.Windows
+            .OfType<TaskbarIslandWindow>()
+            .FirstOrDefault(window => window.IsVisible);
+        var widthDip = island is null
+            ? 225d
+            : island.Width > 0 ? island.Width : island.ActualWidth;
+        if (double.IsNaN(widthDip) || double.IsInfinity(widthDip) || widthDip <= 0)
+            widthDip = 225d;
+        return Math.Max(1, (int)Math.Round(widthDip * scale));
     }
 
     public TaskbarAttachResult AttachOrUpdate(IntPtr window, double desiredWidthDip, double desiredHeightDip)
@@ -60,23 +83,22 @@ public sealed class TaskbarEmbedder
 
         var taskbarWidth = taskbarRect.Right - taskbarRect.Left;
         var taskbarHeight = taskbarRect.Bottom - taskbarRect.Top;
-        // A vertical (left/right) taskbar is taller than it is wide. When the taskbar is
-        // vertical the island is embedded as a narrow column docked to the notification area
-        // ("显示隐藏的图标") rather than a wide strip, so we handle the two orientations
-        // separately instead of rejecting the vertical case.
         var isVertical = taskbarHeight > taskbarWidth;
 
         var dpi = GetDpiForWindow(taskbar);
         if (dpi == 0) dpi = 96;
         var scale = dpi / 96d;
-        var desiredWidth = Math.Max(1, (int)Math.Round(desiredWidthDip * dpi / 96d));
-        var desiredHeight = Math.Max(1, (int)Math.Round(desiredHeightDip * dpi / 96d));
-        var minimumWidth = Math.Max(1, (int)Math.Round(MinimumWidthDip * dpi / 96d));
-        var height = isVertical
-            ? Math.Min(desiredHeight, taskbarHeight - 4)   // vertical: tall column
-            : Math.Min(desiredHeight, Math.Max(1, taskbarHeight - 4));
+        var desiredWidth = Math.Max(1, (int)Math.Round(desiredWidthDip * scale));
+        var requestedHeightDip = isVertical
+            ? Math.Max(desiredHeightDip, TaskbarEmbeddedPlacement.VerticalHeightDip)
+            : desiredHeightDip;
+        var desiredHeight = Math.Max(1, (int)Math.Round(requestedHeightDip * scale));
+        var minimumWidth = Math.Max(1, (int)Math.Round(MinimumWidthDip * scale));
+        var height = Math.Min(desiredHeight, Math.Max(1, taskbarHeight - 4));
 
-        var geometry = ReadGeometryCached(taskbar, taskbarRect);
+        // Do not cache taskbar UIA geometry. Explorer can change orientation/alignment without
+        // recreating Shell_TrayWnd, and a stale 2-second span is visible as placement lag.
+        var geometry = ReadGeometry(taskbar, taskbarRect);
         var centered = IsCenteredTaskbar(geometry.StartButton, taskbarRect);
         var notificationLeft = geometry.NotificationArea.IsValid
             ? geometry.NotificationArea.Left
@@ -88,17 +110,30 @@ public sealed class TaskbarEmbedder
         int width;
         if (isVertical)
         {
-            // Vertical (left/right) taskbar: dock a narrow column against the notification area
-            // ("显示隐藏的图标"), which occupies the lower portion of a vertical taskbar. The
-            // island matches the taskbar width (minus a small margin) and grows upward from the
-            // notification area, leaving the system-tray clearance below.
             var margin = Math.Max(1, (int)Math.Round(Gap * scale));
-            width = Math.Min(desiredWidth, Math.Max(4, taskbarWidth - 2 * margin));
             var clearance = Math.Max(1, (int)Math.Round(TrayClearance * scale));
-            int bottom = taskbarRect.Bottom - clearance;
-            var desiredHeightPx = Math.Min(desiredHeight, Math.Max(height, 8));
-            y = Math.Max(taskbarRect.Top + margin, bottom - desiredHeightPx);
-            x = Math.Max(taskbarRect.Left + margin, taskbarRect.Right - width - margin);
+            var notificationTop = geometry.NotificationArea.IsValid
+                ? geometry.NotificationArea.Top
+                : FindNotificationAreaTop(taskbar, taskbarRect);
+            int? notificationTopInTaskbar = notificationTop > taskbarRect.Top &&
+                                             notificationTop < taskbarRect.Bottom
+                ? notificationTop - taskbarRect.Top
+                : null;
+
+            // SetWindowPos coordinates are relative to Shell_TrayWnd after SetParent. Keeping
+            // them in taskbar-client space fixes the right-side taskbar overflow/disappearance.
+            var placement = TaskbarEmbeddedPlacement.ResolveVertical(
+                taskbarWidth,
+                taskbarHeight,
+                desiredWidth,
+                height,
+                margin,
+                notificationTopInTaskbar,
+                clearance);
+            x = placement.X;
+            y = placement.Y;
+            width = placement.Width;
+            height = placement.Height;
         }
         else
         {
@@ -116,7 +151,7 @@ public sealed class TaskbarEmbedder
                 left = geometry.TaskButtons.IsValid
                     ? geometry.TaskButtons.Right + Gap
                     : geometry.StartButton.IsValid ? geometry.StartButton.Right + Gap : taskbarRect.Left + taskbarHeight + Gap;
-                right = notificationLeft - Gap - Math.Max(1, (int)Math.Round(TrayClearance * dpi / 96d));
+                right = notificationLeft - Gap - Math.Max(1, (int)Math.Round(TrayClearance * scale));
             }
 
             var available = right - left;
@@ -157,7 +192,7 @@ public sealed class TaskbarEmbedder
         _window = window;
         _taskbar = taskbar;
         var label = isVertical
-            ? "已嵌入任务栏（垂直），靠通知区域上侧"
+            ? "已嵌入任务栏（垂直），位于隐藏图标/通知区域上方"
             : centered ? "已嵌入任务栏左侧" : "已嵌入通知区域左侧（预留系统托盘间距）";
         return TaskbarAttachResult.Succeeded(label, width * 96d / dpi);
     }
@@ -204,18 +239,6 @@ public sealed class TaskbarEmbedder
             (taskbarRect.Right - taskbarRect.Left) / 4;
     }
 
-    private TaskbarGeometry ReadGeometryCached(IntPtr taskbar, NativeRect taskbarRect)
-    {
-        var now = DateTime.UtcNow;
-        if (_geometryTaskbar == taskbar && now - _lastGeometryRead < TimeSpan.FromSeconds(2))
-            return _cachedGeometry;
-
-        _geometryTaskbar = taskbar;
-        _lastGeometryRead = now;
-        _cachedGeometry = ReadGeometry(taskbar, taskbarRect);
-        return _cachedGeometry;
-    }
-
     private static TaskbarGeometry ReadGeometry(IntPtr taskbar, NativeRect taskbarRect)
     {
         try
@@ -239,11 +262,16 @@ public sealed class TaskbarEmbedder
                         rectangle.Left >= taskbarRect.Right || rectangle.Bottom <= taskbarRect.Top ||
                         rectangle.Top >= taskbarRect.Bottom) continue;
 
-                    var span = new Span((int)Math.Floor(rectangle.Left), (int)Math.Ceiling(rectangle.Right));
+                    var span = new Span(
+                        (int)Math.Floor(rectangle.Left),
+                        (int)Math.Floor(rectangle.Top),
+                        (int)Math.Ceiling(rectangle.Right),
+                        (int)Math.Ceiling(rectangle.Bottom));
                     var automationId = current.AutomationId;
                     if (automationId == "StartButton") start = span;
                     else if (automationId == "WidgetsButton") widgets = span;
-                    else if (automationId is "SystemTrayIcon" or "NotifyItemIcon")
+                    else if (automationId is "SystemTrayIcon" or "NotifyItemIcon" ||
+                             automationId.Contains("Chevron", StringComparison.OrdinalIgnoreCase))
                         notification = notification.Union(span);
                     else if (current.ControlType == ControlType.Button) buttons.Add(span);
                 }
@@ -273,7 +301,9 @@ public sealed class TaskbarEmbedder
             left = Math.Min(left, button.Left);
             right = Math.Max(right, button.Right);
         }
-        return right > anchor ? new Span(left, right) : start;
+        return right > anchor
+            ? new Span(left, start.IsValid ? start.Top : 0, right, start.IsValid ? start.Bottom : 1)
+            : start;
     }
 
     private static int FindNotificationAreaLeft(IntPtr taskbar, NativeRect taskbarRect)
@@ -281,6 +311,13 @@ public sealed class TaskbarEmbedder
         var notification = FindDescendantWindow(taskbar, "TrayNotifyWnd");
         return notification != IntPtr.Zero && GetWindowRect(notification, out var rectangle)
             ? rectangle.Left : taskbarRect.Right;
+    }
+
+    private static int FindNotificationAreaTop(IntPtr taskbar, NativeRect taskbarRect)
+    {
+        var notification = FindDescendantWindow(taskbar, "TrayNotifyWnd");
+        return notification != IntPtr.Zero && GetWindowRect(notification, out var rectangle)
+            ? rectangle.Top : taskbarRect.Bottom;
     }
 
     private static IntPtr FindDescendantWindow(IntPtr parent, string className)
@@ -303,12 +340,16 @@ public sealed class TaskbarEmbedder
         public static TaskbarGeometry Empty => new(Span.Invalid, Span.Invalid, Span.Invalid, Span.Invalid);
     }
 
-    private readonly record struct Span(int Left, int Right)
+    private readonly record struct Span(int Left, int Top, int Right, int Bottom)
     {
-        public bool IsValid => Right > Left;
-        public static Span Invalid => new(0, 0);
+        public bool IsValid => Right > Left && Bottom > Top;
+        public static Span Invalid => new(0, 0, 0, 0);
         public Span Union(Span other) => !IsValid ? other : !other.IsValid ? this
-            : new Span(Math.Min(Left, other.Left), Math.Max(Right, other.Right));
+            : new Span(
+                Math.Min(Left, other.Left),
+                Math.Min(Top, other.Top),
+                Math.Max(Right, other.Right),
+                Math.Max(Bottom, other.Bottom));
     }
 
     [StructLayout(LayoutKind.Sequential)]
