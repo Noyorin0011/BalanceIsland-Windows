@@ -27,8 +27,19 @@
         </Grid.ColumnDefinitions>
 
         <Border x:Name="ProviderIconBackground" Grid.Column="0" Width="22" Height="22"
-                CornerRadius="7" Background="Transparent" HorizontalAlignment="Center"
-                VerticalAlignment="Center">
+                CornerRadius="7" Background="Transparent" HorizontalAlignment="Center">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="VerticalAlignment" Value="Center" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding ElementName=VerticalLayout, Path=Visibility}" Value="Visible">
+                            <Setter Property="Grid.ColumnSpan" Value="2" />
+                            <Setter Property="VerticalAlignment" Value="Top" />
+                            <Setter Property="Margin" Value="0,3,0,0" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
             <Grid>
                 <Image x:Name="ProviderIconImage" Width="17" Height="17" Stretch="Uniform"
                        HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -38,7 +49,20 @@
             </Grid>
         </Border>
 
-        <Grid Grid.Column="1" Margin="3,0,0,0">
+        <Grid>
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Setter Property="Grid.Column" Value="1" />
+                    <Setter Property="Margin" Value="3,0,0,0" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding ElementName=VerticalLayout, Path=Visibility}" Value="Visible">
+                            <Setter Property="Grid.Column" Value="0" />
+                            <Setter Property="Grid.ColumnSpan" Value="2" />
+                            <Setter Property="Margin" Value="1,28,1,2" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
             <Grid.RowDefinitions>
                 <RowDefinition Height="*" />
                 <RowDefinition Height="*" />
@@ -50,17 +74,18 @@
             <TextBlock x:Name="IslandUsageText" Grid.Row="1" Foreground="{DynamicResource PrimaryText}" Opacity="0.86"
                        FontFamily="Segoe UI" FontSize="10" VerticalAlignment="Center"
                        TextTrimming="CharacterEllipsis" Text="请添加账户" />
-            <!-- Vertical-taskbar layout: three compact lines (account / balance / usage) -->
+            <!-- Vertical taskbar: icon is moved above these three text rows by the styles above. -->
             <StackPanel x:Name="VerticalLayout" Grid.RowSpan="2" VerticalAlignment="Center"
-                        Visibility="Collapsed">
+                        HorizontalAlignment="Stretch" Visibility="Collapsed">
                 <TextBlock x:Name="VerticalLabelText" Foreground="{DynamicResource PrimaryText}"
                            FontFamily="Segoe UI" FontSize="10" FontWeight="SemiBold"
-                           TextTrimming="CharacterEllipsis" Text="" />
+                           TextAlignment="Center" TextTrimming="CharacterEllipsis" Text="" />
                 <TextBlock x:Name="VerticalBalanceText" Foreground="{DynamicResource PrimaryText}"
                            FontFamily="Segoe UI" FontSize="11" FontWeight="SemiBold"
-                           TextTrimming="CharacterEllipsis" Text="" />
+                           TextAlignment="Center" TextTrimming="CharacterEllipsis" Text="" />
                 <TextBlock x:Name="VerticalUsageText" Foreground="{DynamicResource PrimaryText}" Opacity="0.86"
-                           FontFamily="Segoe UI" FontSize="9" TextTrimming="CharacterEllipsis" Text="" />
+                           FontFamily="Segoe UI" FontSize="9" TextAlignment="Center"
+                           TextTrimming="CharacterEllipsis" Text="" />
             </StackPanel>
         </Grid>
 
