@@ -39,14 +39,21 @@ public sealed class TaskbarEmbedder
     public bool IsAttached => _window != IntPtr.Zero && IsWindow(_window) &&
                               _taskbar != IntPtr.Zero && GetParent(_window) == _taskbar;
 
-    public int GetPreferredFloatingLeft(IntPtr taskbar, int fallbackLeft, int gap)
+    public int GetPreferredFloatingLeft(IntPtr taskbar, int fallbackLeft, int gap, int islandWidth)
     {
         if (taskbar == IntPtr.Zero || !GetWindowRect(taskbar, out var taskbarRect))
             return fallbackLeft;
-        var geometry = ReadGeometryCached(taskbar, taskbarRect);
-        return geometry.WidgetsButton.IsValid
-            ? Math.Max(fallbackLeft, geometry.WidgetsButton.Right + Math.Max(0, gap))
-            : fallbackLeft;
+
+        // Win11 can rebuild/reposition Start/Widgets immediately after TaskbarAl changes.
+        // Floating placement must therefore read fresh UIA geometry instead of reusing the
+        // 2-second cache that is still useful for the Win10 embedded path.
+        var geometry = ReadGeometry(taskbar, taskbarRect);
+        return TaskbarFloatingPlacement.PreferredLeft(
+            fallbackLeft,
+            geometry.WidgetsButton.IsValid ? geometry.WidgetsButton.Left : null,
+            geometry.WidgetsButton.IsValid ? geometry.WidgetsButton.Right : null,
+            islandWidth,
+            gap);
     }
 
     public TaskbarAttachResult AttachOrUpdate(IntPtr window, double desiredWidthDip, double desiredHeightDip)
