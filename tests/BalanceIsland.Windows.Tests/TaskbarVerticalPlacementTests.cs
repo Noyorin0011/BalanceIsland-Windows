@@ -52,7 +52,8 @@ public sealed class TaskbarVerticalPlacementTests
             fallbackTrayClearance: 42,
             minimumContentHeight: 78);
 
-        Assert.Equal(958, actual.Y);
-        Assert.Equal(1036, actual.Y + actual.Height);
+        // Keep both the configured tray clearance and the edge margin.
+        Assert.Equal(956, actual.Y);
+        Assert.Equal(1034, actual.Y + actual.Height);
     }
 }
