@@ -42,6 +42,7 @@ public partial class TaskbarIslandWindow : Window
     private const double MaximumHeight = 100;
     private const double FloatingTrayClearanceDip = 260;
     private static readonly IntPtr HwndTopMost = new(-1);
+    private static readonly IntPtr HwndTop = new(0);
     private static readonly IntPtr HwndBottom = new(1);
 
     private readonly BalanceCoordinator _coordinator;
@@ -504,14 +505,36 @@ public partial class TaskbarIslandWindow : Window
             Right = x + widthPx,
             Bottom = y + heightPx
         };
-        var taskbarPresented = IsTaskbarPresented(taskbar, target, handle);
-        var useTopmost = forceTopmost || taskbarPresented;
+        // The island is designed to float above the bottom taskbar, so whenever it sits within
+        // the taskbar band it must stay topmost and be inserted BEFORE the taskbar in the
+        // Z-order. The taskbar (Shell_TrayWnd) is itself topmost and can be re-stacked above the
+        // island after a desktop/taskbar click, hiding it underneath.
+        var useTopmost = forceTopmost || IsOverTaskbar(target, taskbarRect);
         var placement = new FloatingPlacement(x, y, widthPx, heightPx, useTopmost);
         if (_lastFloatingPlacement == placement && IsWindowVisible(handle)) return;
 
-        SetWindowPos(handle, useTopmost ? HwndTopMost : HwndBottom,
-            x, y, widthPx, heightPx, SwpNoActivate | SwpShowWindow);
+        if (useTopmost)
+        {
+            // Make the island topmost, then put it at the absolute top of the Z-order (HWND_TOP)
+            // so it renders above the taskbar (Shell_TrayWnd), which is itself topmost and would
+            // otherwise be stacked over the island after a desktop/taskbar click.
+            SetWindowPos(handle, HwndTopMost, 0, 0, 0, 0,
+                SwpNoMove | SwpNoSize | SwpNoActivate);
+            SetWindowPos(handle, HwndTop, x, y, widthPx, heightPx, SwpNoActivate | SwpShowWindow);
+        }
+        else
+        {
+            SetWindowPos(handle, HwndBottom, x, y, widthPx, heightPx, SwpNoActivate | SwpShowWindow);
+        }
         _lastFloatingPlacement = placement;
+    }
+
+    private static bool IsOverTaskbar(NativeRect islandRect, NativeRect taskbarRect)
+    {
+        // The island overlaps the taskbar's vertical band (bottom taskbar). It does not need to
+        // cover the whole taskbar width to warrant floating on top of it.
+        return islandRect.Bottom > taskbarRect.Top &&
+               islandRect.Top < taskbarRect.Bottom;
     }
 
     private static void ClampToVirtualScreen(ref int x, ref int y, int width, int height)
@@ -527,26 +550,6 @@ public partial class TaskbarIslandWindow : Window
         var visible = Math.Min(24, Math.Min(width, height));
         x = Math.Clamp(x, virtualLeft - width + visible, virtualRight - visible);
         y = Math.Clamp(y, virtualTop - height + visible, virtualBottom - visible);
-    }
-
-    private static bool IsTaskbarPresented(
-        IntPtr taskbar, NativeRect overlayTarget, IntPtr overlayWindow)
-    {
-        if (!IsWindowVisible(taskbar) || !GetWindowRect(taskbar, out var rectangle)) return false;
-        var width = rectangle.Right - rectangle.Left;
-        var height = rectangle.Bottom - rectangle.Top;
-        if (width < 3 || height < 1) return false;
-
-        var y = rectangle.Top + height / 2;
-        foreach (var fraction in new[] { 0.08, 0.28, 0.50, 0.72, 0.94 })
-        {
-            var x = rectangle.Left + Math.Clamp((int)Math.Round(width * fraction), 1, width - 1);
-            if (overlayTarget.Contains(x, y)) continue;
-            var hit = WindowFromPoint(new NativePoint { X = x, Y = y });
-            if (hit == IntPtr.Zero || hit == overlayWindow || IsChild(overlayWindow, hit)) continue;
-            if (hit == taskbar || IsChild(taskbar, hit)) return true;
-        }
-        return false;
     }
 
     private static bool IsForegroundFullscreen(IntPtr islandHandle)
@@ -615,9 +618,12 @@ public partial class TaskbarIslandWindow : Window
         {
             try
             {
-                // Re-evaluate display mode on any foreground change. IsForegroundFullscreen
-                // now excludes shell/desktop/taskbar windows, so clicking the desktop or
-                // taskbar no longer hides the island; a real fullscreen window still does.
+                // When focus moves to a shell / desktop / taskbar window (e.g. clicking the
+                // desktop or the taskbar), the taskbar can be re-stacked above the island.
+                // Invalidate the cached placement so ApplyDisplayMode re-inserts the island
+                // BEFORE the taskbar in the Z-order, keeping it visible floating on top.
+                if (IsShellWindow(GetForegroundWindow()))
+                    _lastFloatingPlacement = null;
                 ApplyDisplayMode();
                 _eventSettleTimer.Stop();
                 _eventSettleTimer.Start();
