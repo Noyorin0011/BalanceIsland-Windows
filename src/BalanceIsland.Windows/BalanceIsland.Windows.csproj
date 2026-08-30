@@ -14,9 +14,4 @@
     <Authors>Noyorin0011</Authors>
     <Description>Windows taskbar island for AI API balances, usage and alerts.</Description>
   </PropertyGroup>
-
-  <ItemGroup>
-    <Reference Include="UIAutomationClient" />
-    <Reference Include="UIAutomationTypes" />
-  </ItemGroup>
 </Project>
