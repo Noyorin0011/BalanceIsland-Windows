@@ -52,4 +52,15 @@ public sealed class TaskbarEmbeddedPlacementTests
 
         Assert.Equal(950, placement.Y);
     }
+
+    [Theory]
+    [InlineData(38, false, 38)]
+    [InlineData(38, true, 82)]
+    [InlineData(95, true, 95)]
+    public void ResolveDisplayHeightDip_reserves_four_line_vertical_height(
+        double configuredHeight, bool vertical, double expected)
+    {
+        Assert.Equal(expected,
+            TaskbarEmbeddedPlacement.ResolveDisplayHeightDip(configuredHeight, vertical));
+    }
 }
