@@ -39,7 +39,7 @@ public sealed class TaskbarEmbedder
     public bool IsAttached => _window != IntPtr.Zero && IsWindow(_window) &&
                               _taskbar != IntPtr.Zero && GetParent(_window) == _taskbar;
 
-    public int GetPreferredFloatingLeft(IntPtr taskbar, int fallbackLeft, int gap, int islandWidth)
+    public int GetPreferredFloatingLeft(IntPtr taskbar, int fallbackLeft, int gap)
     {
         if (taskbar == IntPtr.Zero || !GetWindowRect(taskbar, out var taskbarRect))
             return fallbackLeft;
@@ -48,6 +48,13 @@ public sealed class TaskbarEmbedder
         // Floating placement must therefore read fresh UIA geometry instead of reusing the
         // 2-second cache that is still useful for the Win10 embedded path.
         var geometry = ReadGeometry(taskbar, taskbarRect);
+        var dpi = GetDpiForWindow(taskbar);
+        if (dpi == 0) dpi = 96;
+        var islandWidthDip = System.Windows.Application.Current?.Windows
+            .OfType<TaskbarIslandWindow>()
+            .FirstOrDefault()?.ActualWidth ?? 160d;
+        var islandWidth = Math.Max(1, (int)Math.Round(islandWidthDip * dpi / 96d));
+
         return TaskbarFloatingPlacement.PreferredLeft(
             fallbackLeft,
             geometry.WidgetsButton.IsValid ? geometry.WidgetsButton.Left : null,
