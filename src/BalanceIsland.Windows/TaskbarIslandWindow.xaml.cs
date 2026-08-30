@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
@@ -552,8 +553,11 @@ public partial class TaskbarIslandWindow : Window
     {
         var foreground = GetForegroundWindow();
         if (foreground == IntPtr.Zero || foreground == islandHandle) return false;
-        var taskbar = FindWindow("Shell_TrayWnd", null);
-        if (foreground == taskbar || foreground == GetDesktopWindow()) return false;
+        // Normalize to the root window so a taskbar child (e.g. Shell/XAML popup) is
+        // compared as its owning shell window rather than being mistaken for a fullscreen app.
+        var root = GetAncestor(foreground, GaRoot);
+        if (root != IntPtr.Zero) foreground = root;
+        if (IsShellWindow(foreground)) return false;
         if (!GetWindowRect(foreground, out var windowRect)) return false;
         var monitor = MonitorFromWindow(foreground, MonitorDefaultToNearest);
         if (monitor == IntPtr.Zero) return false;
@@ -564,6 +568,30 @@ public partial class TaskbarIslandWindow : Window
                windowRect.Top <= info.rcMonitor.Top + tolerance &&
                windowRect.Right >= info.rcMonitor.Right - tolerance &&
                windowRect.Bottom >= info.rcMonitor.Bottom - tolerance;
+    }
+
+    // Windows 10/11 do not always report the desktop as GetDesktopWindow(); clicking the
+    // desktop often leaves Progman / WorkerW (or a secondary taskbar) as the foreground
+    // window, all of which cover the full monitor. Without excluding these Shell windows,
+    // the island would be mistaken for entering fullscreen and hidden. Treat any shell /
+    // taskbar / desktop window as "not fullscreen" so the island stays visible.
+    private static bool IsShellWindow(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return true;
+        var root = GetAncestor(hwnd, GaRoot);
+        if (root != IntPtr.Zero) hwnd = root;
+        // Match by class name — these HWNDs are not stable across sessions. This avoids
+        // relying on FindWindow/Top-level window handles during a WinEvent callback and
+        // keeps the check cheap and exception-safe.
+        var className = GetWindowClass(hwnd);
+        return className is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd"
+            or "Progman" or "WorkerW" or "TaskListThumbnailWnd";
+    }
+
+    private static string GetWindowClass(IntPtr hwnd)
+    {
+        var sb = new StringBuilder(256);
+        return GetClassName(hwnd, sb, sb.Capacity) > 0 ? sb.ToString() : string.Empty;
     }
 
     private void OnWinEvent(
@@ -585,9 +613,19 @@ public partial class TaskbarIslandWindow : Window
 
         Dispatcher.BeginInvoke(new Action(() =>
         {
-            ApplyDisplayMode();
-            _eventSettleTimer.Stop();
-            _eventSettleTimer.Start();
+            try
+            {
+                // Re-evaluate display mode on any foreground change. IsForegroundFullscreen
+                // now excludes shell/desktop/taskbar windows, so clicking the desktop or
+                // taskbar no longer hides the island; a real fullscreen window still does.
+                ApplyDisplayMode();
+                _eventSettleTimer.Stop();
+                _eventSettleTimer.Start();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("Island WinEvent handler error: " + ex);
+            }
         }), DispatcherPriority.Send);
     }
 
@@ -722,4 +760,12 @@ public partial class TaskbarIslandWindow : Window
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern uint RegisterWindowMessage(string message);
+
+    private const uint GaRoot = 2;
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr hwnd, StringBuilder className, int maxCount);
 }
