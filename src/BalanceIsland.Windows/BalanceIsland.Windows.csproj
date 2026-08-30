@@ -9,6 +9,9 @@
     <AssemblyName>BalanceIsland</AssemblyName>
     <RootNamespace>BalanceIsland.Windows</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- This is a WPF process that uses WinForms only for NotifyIcon. WPF per-monitor DPI
+         awareness is intentionally declared in app.manifest, so WFAC010 is not actionable. -->
+    <NoWarn>$(NoWarn);WFAC010</NoWarn>
     <ApplicationIcon />
     <Version>0.3.0</Version>
     <Authors>Noyorin0011</Authors>
