@@ -8,6 +8,9 @@ public static class TaskbarEmbeddedPlacement
 {
     public const double VerticalHeightDip = 82d;
 
+    public static double ResolveDisplayHeightDip(double configuredHeight, bool vertical) =>
+        vertical ? Math.Max(configuredHeight, VerticalHeightDip) : configuredHeight;
+
     public static TaskbarClientPlacement ResolveVertical(
         int taskbarWidth,
         int taskbarHeight,
