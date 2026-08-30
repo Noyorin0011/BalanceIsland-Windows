@@ -1,5 +1,7 @@
 using System.Runtime.InteropServices;
+using System.Windows;
 using System.Windows.Automation;
+using System.Windows.Interop;
 using Microsoft.Win32;
 
 namespace BalanceIsland.Windows;
@@ -43,10 +45,36 @@ public sealed class TaskbarEmbedder
     {
         if (taskbar == IntPtr.Zero || !GetWindowRect(taskbar, out var taskbarRect))
             return fallbackLeft;
-        var geometry = ReadGeometryCached(taskbar, taskbarRect);
-        return geometry.WidgetsButton.IsValid
-            ? Math.Max(fallbackLeft, geometry.WidgetsButton.Right + Math.Max(0, gap))
-            : fallbackLeft;
+
+        // Win11 can move Start/Widgets immediately when TaskbarAl changes. Floating placement
+        // must therefore use fresh UI Automation geometry instead of the 2-second embed cache.
+        var geometry = ReadGeometry(taskbar, taskbarRect);
+        var margin = Math.Max(0, gap);
+        var islandWidth = GetFloatingIslandWidthPx(taskbar);
+        return TaskbarFloatingPlacement.ResolveLeft(
+            taskbarRect.Left,
+            taskbarRect.Right,
+            islandWidth,
+            margin,
+            geometry.WidgetsButton.IsValid ? geometry.WidgetsButton.Left : null,
+            geometry.WidgetsButton.IsValid ? geometry.WidgetsButton.Right : null);
+    }
+
+    private static int GetFloatingIslandWidthPx(IntPtr taskbar)
+    {
+        var dpi = GetDpiForWindow(taskbar);
+        if (dpi == 0) dpi = 96;
+        var scale = dpi / 96d;
+
+        var island = Application.Current?.Windows
+            .OfType<TaskbarIslandWindow>()
+            .FirstOrDefault(window => window.IsVisible);
+        var widthDip = island is null
+            ? 225d
+            : island.ActualWidth > 0 ? island.ActualWidth : island.Width;
+        if (double.IsNaN(widthDip) || double.IsInfinity(widthDip) || widthDip <= 0)
+            widthDip = 225d;
+        return Math.Max(1, (int)Math.Round(widthDip * scale));
     }
 
     public TaskbarAttachResult AttachOrUpdate(IntPtr window, double desiredWidthDip, double desiredHeightDip)
