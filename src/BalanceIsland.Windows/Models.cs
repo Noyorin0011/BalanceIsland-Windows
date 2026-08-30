@@ -236,6 +236,9 @@ public sealed class IslandDisplayItem
     public Provider? Provider { get; init; }
     public string? IconResourceKey { get; init; }
     public string Title { get; init; } = "";
+    // A compact account identifier (note or masked key suffix) used for the vertical-taskbar
+    // island layout's first line.
+    public string DetailLabel { get; init; } = "";
     public string PrimaryText { get; init; } = "";
     public string SecondaryText { get; init; } = "";
     public double? BalanceAmount { get; init; }

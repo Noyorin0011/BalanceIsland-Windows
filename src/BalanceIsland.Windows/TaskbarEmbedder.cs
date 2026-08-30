@@ -60,15 +60,21 @@ public sealed class TaskbarEmbedder
 
         var taskbarWidth = taskbarRect.Right - taskbarRect.Left;
         var taskbarHeight = taskbarRect.Bottom - taskbarRect.Top;
-        if (taskbarWidth <= taskbarHeight)
-            return TaskbarAttachResult.Failed("嵌入模式当前仅支持横向任务栏");
+        // A vertical (left/right) taskbar is taller than it is wide. When the taskbar is
+        // vertical the island is embedded as a narrow column docked to the notification area
+        // ("显示隐藏的图标") rather than a wide strip, so we handle the two orientations
+        // separately instead of rejecting the vertical case.
+        var isVertical = taskbarHeight > taskbarWidth;
 
         var dpi = GetDpiForWindow(taskbar);
         if (dpi == 0) dpi = 96;
+        var scale = dpi / 96d;
         var desiredWidth = Math.Max(1, (int)Math.Round(desiredWidthDip * dpi / 96d));
         var desiredHeight = Math.Max(1, (int)Math.Round(desiredHeightDip * dpi / 96d));
         var minimumWidth = Math.Max(1, (int)Math.Round(MinimumWidthDip * dpi / 96d));
-        var height = Math.Min(desiredHeight, Math.Max(1, taskbarHeight - 4));
+        var height = isVertical
+            ? Math.Min(desiredHeight, taskbarHeight - 4)   // vertical: tall column
+            : Math.Min(desiredHeight, Math.Max(1, taskbarHeight - 4));
 
         var geometry = ReadGeometryCached(taskbar, taskbarRect);
         var centered = IsCenteredTaskbar(geometry.StartButton, taskbarRect);
@@ -77,31 +83,51 @@ public sealed class TaskbarEmbedder
             : FindNotificationAreaLeft(taskbar, taskbarRect);
         if (notificationLeft <= taskbarRect.Left) notificationLeft = taskbarRect.Right;
 
-        int left;
-        int right;
-        if (centered)
+        int x;
+        int y;
+        int width;
+        if (isVertical)
         {
-            left = Math.Max(taskbarRect.Left + 8,
-                geometry.WidgetsButton.IsValid ? geometry.WidgetsButton.Right + Gap : taskbarRect.Left + 8);
-            right = Math.Min(notificationLeft - Gap,
-                geometry.TaskButtons.IsValid ? geometry.TaskButtons.Left - Gap : taskbarRect.Left + taskbarWidth / 2 - Gap);
+            // Vertical (left/right) taskbar: dock a narrow column against the notification area
+            // ("显示隐藏的图标"), which occupies the lower portion of a vertical taskbar. The
+            // island matches the taskbar width (minus a small margin) and grows upward from the
+            // notification area, leaving the system-tray clearance below.
+            var margin = Math.Max(1, (int)Math.Round(Gap * scale));
+            width = Math.Min(desiredWidth, Math.Max(4, taskbarWidth - 2 * margin));
+            var clearance = Math.Max(1, (int)Math.Round(TrayClearance * scale));
+            int bottom = taskbarRect.Bottom - clearance;
+            var desiredHeightPx = Math.Min(desiredHeight, Math.Max(height, 8));
+            y = Math.Max(taskbarRect.Top + margin, bottom - desiredHeightPx);
+            x = Math.Max(taskbarRect.Left + margin, taskbarRect.Right - width - margin);
         }
         else
         {
-            left = geometry.TaskButtons.IsValid
-                ? geometry.TaskButtons.Right + Gap
-                : geometry.StartButton.IsValid ? geometry.StartButton.Right + Gap : taskbarRect.Left + taskbarHeight + Gap;
-            right = notificationLeft - Gap - Math.Max(1, (int)Math.Round(TrayClearance * dpi / 96d));
+            int left;
+            int right;
+            if (centered)
+            {
+                left = Math.Max(taskbarRect.Left + 8,
+                    geometry.WidgetsButton.IsValid ? geometry.WidgetsButton.Right + Gap : taskbarRect.Left + 8);
+                right = Math.Min(notificationLeft - Gap,
+                    geometry.TaskButtons.IsValid ? geometry.TaskButtons.Left - Gap : taskbarRect.Left + taskbarWidth / 2 - Gap);
+            }
+            else
+            {
+                left = geometry.TaskButtons.IsValid
+                    ? geometry.TaskButtons.Right + Gap
+                    : geometry.StartButton.IsValid ? geometry.StartButton.Right + Gap : taskbarRect.Left + taskbarHeight + Gap;
+                right = notificationLeft - Gap - Math.Max(1, (int)Math.Round(TrayClearance * dpi / 96d));
+            }
+
+            var available = right - left;
+            if (available < minimumWidth)
+                return TaskbarAttachResult.Failed("任务栏没有足够的安全空位，已回退悬浮模式");
+
+            width = Math.Min(desiredWidth, available);
+            var xScreen = centered ? left : right - width;
+            x = xScreen - taskbarRect.Left;
+            y = Math.Max(0, (taskbarHeight - height) / 2);
         }
-
-        var available = right - left;
-        if (available < minimumWidth)
-            return TaskbarAttachResult.Failed("任务栏没有足够的安全空位，已回退悬浮模式");
-
-        var width = Math.Min(desiredWidth, available);
-        var xScreen = centered ? left : right - width;
-        var x = xScreen - taskbarRect.Left;
-        var y = Math.Max(0, (taskbarHeight - height) / 2);
 
         CaptureStyles(window);
         var style = GetWindowLongPtr(window, GwlStyle).ToInt64();
@@ -130,7 +156,9 @@ public sealed class TaskbarEmbedder
         ShowWindow(window, SwShowNoActivate);
         _window = window;
         _taskbar = taskbar;
-        var label = centered ? "已嵌入任务栏左侧" : "已嵌入通知区域左侧（预留系统托盘间距）";
+        var label = isVertical
+            ? "已嵌入任务栏（垂直），靠通知区域上侧"
+            : centered ? "已嵌入任务栏左侧" : "已嵌入通知区域左侧（预留系统托盘间距）";
         return TaskbarAttachResult.Succeeded(label, width * 96d / dpi);
     }
 

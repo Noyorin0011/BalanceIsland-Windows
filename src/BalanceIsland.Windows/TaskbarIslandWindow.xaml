@@ -50,6 +50,18 @@
             <TextBlock x:Name="IslandUsageText" Grid.Row="1" Foreground="{DynamicResource PrimaryText}" Opacity="0.86"
                        FontFamily="Segoe UI" FontSize="10" VerticalAlignment="Center"
                        TextTrimming="CharacterEllipsis" Text="请添加账户" />
+            <!-- Vertical-taskbar layout: three compact lines (account / balance / usage) -->
+            <StackPanel x:Name="VerticalLayout" Grid.RowSpan="2" VerticalAlignment="Center"
+                        Visibility="Collapsed">
+                <TextBlock x:Name="VerticalLabelText" Foreground="{DynamicResource PrimaryText}"
+                           FontFamily="Segoe UI" FontSize="10" FontWeight="SemiBold"
+                           TextTrimming="CharacterEllipsis" Text="" />
+                <TextBlock x:Name="VerticalBalanceText" Foreground="{DynamicResource PrimaryText}"
+                           FontFamily="Segoe UI" FontSize="11" FontWeight="SemiBold"
+                           TextTrimming="CharacterEllipsis" Text="" />
+                <TextBlock x:Name="VerticalUsageText" Foreground="{DynamicResource PrimaryText}" Opacity="0.86"
+                           FontFamily="Segoe UI" FontSize="9" TextTrimming="CharacterEllipsis" Text="" />
+            </StackPanel>
         </Grid>
 
         <Grid x:Name="EditChrome" Grid.ColumnSpan="2" Visibility="Collapsed">
