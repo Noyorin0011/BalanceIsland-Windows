@@ -48,10 +48,11 @@ public static class IslandDisplayGroups
         AppState state,
         string name,
         IslandGroupMode mode,
-        IEnumerable<string> accountIds)
+        IEnumerable<string> accountIds,
+        bool includeCodexPlanUsage = false)
     {
         ArgumentNullException.ThrowIfNull(state);
-        var group = BuildGroup(state, name, mode, accountIds);
+        var group = BuildGroup(state, name, mode, accountIds, includeCodexPlanUsage);
         state.DisplayGroups.Add(group);
         return group;
     }
@@ -61,16 +62,18 @@ public static class IslandDisplayGroups
         string groupId,
         string name,
         IslandGroupMode mode,
-        IEnumerable<string> accountIds)
+        IEnumerable<string> accountIds,
+        bool includeCodexPlanUsage = false)
     {
         ArgumentNullException.ThrowIfNull(state);
         var group = FindGroup(state, groupId);
-        var validated = BuildGroup(state, name, mode, accountIds);
+        var validated = BuildGroup(state, name, mode, accountIds, includeCodexPlanUsage);
 
         group.Name = validated.Name;
         group.Mode = validated.Mode;
         group.AggregateProvider = validated.AggregateProvider;
         group.AccountIds = validated.AccountIds;
+        group.IncludeCodexPlanUsage = validated.IncludeCodexPlanUsage;
         return group;
     }
 
@@ -237,14 +240,17 @@ public static class IslandDisplayGroups
         AppState state,
         string name,
         IslandGroupMode mode,
-        IEnumerable<string> accountIds)
+        IEnumerable<string> accountIds,
+        bool includeCodexPlanUsage = false)
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new ArgumentException("分组名称不能为空", nameof(name));
         ArgumentNullException.ThrowIfNull(accountIds);
+        if (mode == IslandGroupMode.Aggregate && includeCodexPlanUsage)
+            throw new ArgumentException("聚合分组不能包含套餐余量", nameof(includeCodexPlanUsage));
 
         var ids = accountIds.ToArray();
-        if (ids.Length == 0)
+        if (ids.Length == 0 && !includeCodexPlanUsage)
             throw new ArgumentException("分组至少包含一个账户", nameof(accountIds));
         if (ids.Any(string.IsNullOrWhiteSpace) || ids.Distinct(StringComparer.Ordinal).Count() != ids.Length)
             throw new ArgumentException("分组成员必须是不同的账户", nameof(accountIds));
@@ -262,8 +268,25 @@ public static class IslandDisplayGroups
             Name = name.Trim(),
             Mode = mode,
             AggregateProvider = aggregateProvider,
-            AccountIds = ids.ToList()
+            AccountIds = ids.ToList(),
+            IncludeCodexPlanUsage = includeCodexPlanUsage
         };
+    }
+
+    public static IslandDisplayItem FromCodexPlanUsage(CodexPlanUsage usage, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(usage);
+        var text = CodexPlanOverlayFormatter.Format(usage, now);
+        return DisplayItem(
+            Provider.OpenAI,
+            "ChatGPT/Codex 套餐",
+            "套餐",
+            text,
+            "",
+            null,
+            null,
+            "USD",
+            BalanceVisualState.Normal);
     }
 
     private static IslandDisplayGroup FindGroup(AppState state, string groupId) =>
