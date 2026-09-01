@@ -23,6 +23,7 @@ public sealed class TaskbarEmbedder
     private const int SwShowNoActivate = 4;
     private const int Gap = 6;
     private const int TrayClearance = 42;
+    private const int VerticalContentHeightDip = 78;
     private const int MinimumWidthDip = 120;
     private const string TaskbarAlignmentKey =
         @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced";
@@ -32,9 +33,6 @@ public sealed class TaskbarEmbedder
     private long _originalStyle;
     private long _originalExStyle;
     private bool _stylesCaptured;
-    private IntPtr _geometryTaskbar;
-    private DateTime _lastGeometryRead;
-    private TaskbarGeometry _cachedGeometry = TaskbarGeometry.Empty;
 
     public bool IsAttached => _window != IntPtr.Zero && IsWindow(_window) &&
                               _taskbar != IntPtr.Zero && GetParent(_window) == _taskbar;
@@ -43,10 +41,23 @@ public sealed class TaskbarEmbedder
     {
         if (taskbar == IntPtr.Zero || !GetWindowRect(taskbar, out var taskbarRect))
             return fallbackLeft;
-        var geometry = ReadGeometryCached(taskbar, taskbarRect);
-        return geometry.WidgetsButton.IsValid
-            ? Math.Max(fallbackLeft, geometry.WidgetsButton.Right + Math.Max(0, gap))
-            : fallbackLeft;
+
+        // Win11 can rebuild/reposition Start/Widgets immediately after TaskbarAl changes.
+        // Read fresh UIA geometry so alignment changes are not delayed by stale coordinates.
+        var geometry = ReadGeometry(taskbar, taskbarRect);
+        var dpi = GetDpiForWindow(taskbar);
+        if (dpi == 0) dpi = 96;
+        var islandWidthDip = System.Windows.Application.Current?.Windows
+            .OfType<TaskbarIslandWindow>()
+            .FirstOrDefault()?.ActualWidth ?? 160d;
+        var islandWidth = Math.Max(1, (int)Math.Round(islandWidthDip * dpi / 96d));
+
+        return TaskbarFloatingPlacement.PreferredLeft(
+            fallbackLeft,
+            geometry.WidgetsButton.IsValid ? geometry.WidgetsButton.Left : null,
+            geometry.WidgetsButton.IsValid ? geometry.WidgetsButton.Right : null,
+            islandWidth,
+            gap);
     }
 
     public TaskbarAttachResult AttachOrUpdate(IntPtr window, double desiredWidthDip, double desiredHeightDip)
@@ -60,23 +71,19 @@ public sealed class TaskbarEmbedder
 
         var taskbarWidth = taskbarRect.Right - taskbarRect.Left;
         var taskbarHeight = taskbarRect.Bottom - taskbarRect.Top;
-        // A vertical (left/right) taskbar is taller than it is wide. When the taskbar is
-        // vertical the island is embedded as a narrow column docked to the notification area
-        // ("显示隐藏的图标") rather than a wide strip, so we handle the two orientations
-        // separately instead of rejecting the vertical case.
         var isVertical = taskbarHeight > taskbarWidth;
 
         var dpi = GetDpiForWindow(taskbar);
         if (dpi == 0) dpi = 96;
         var scale = dpi / 96d;
-        var desiredWidth = Math.Max(1, (int)Math.Round(desiredWidthDip * dpi / 96d));
-        var desiredHeight = Math.Max(1, (int)Math.Round(desiredHeightDip * dpi / 96d));
-        var minimumWidth = Math.Max(1, (int)Math.Round(MinimumWidthDip * dpi / 96d));
-        var height = isVertical
-            ? Math.Min(desiredHeight, taskbarHeight - 4)   // vertical: tall column
-            : Math.Min(desiredHeight, Math.Max(1, taskbarHeight - 4));
+        var desiredWidth = Math.Max(1, (int)Math.Round(desiredWidthDip * scale));
+        var desiredHeight = Math.Max(1, (int)Math.Round(desiredHeightDip * scale));
+        var minimumWidth = Math.Max(1, (int)Math.Round(MinimumWidthDip * scale));
 
-        var geometry = ReadGeometryCached(taskbar, taskbarRect);
+        // Always read current geometry here. Win10 taskbar docking/orientation changes can move
+        // Start, task buttons and notification controls synchronously; a time cache made the
+        // island visibly lag behind those changes.
+        var geometry = ReadGeometry(taskbar, taskbarRect);
         var centered = IsCenteredTaskbar(geometry.StartButton, taskbarRect);
         var notificationLeft = geometry.NotificationArea.IsValid
             ? geometry.NotificationArea.Left
@@ -86,22 +93,33 @@ public sealed class TaskbarEmbedder
         int x;
         int y;
         int width;
+        int height;
         if (isVertical)
         {
-            // Vertical (left/right) taskbar: dock a narrow column against the notification area
-            // ("显示隐藏的图标"), which occupies the lower portion of a vertical taskbar. The
-            // island matches the taskbar width (minus a small margin) and grows upward from the
-            // notification area, leaving the system-tray clearance below.
             var margin = Math.Max(1, (int)Math.Round(Gap * scale));
-            width = Math.Min(desiredWidth, Math.Max(4, taskbarWidth - 2 * margin));
             var clearance = Math.Max(1, (int)Math.Round(TrayClearance * scale));
-            int bottom = taskbarRect.Bottom - clearance;
-            var desiredHeightPx = Math.Min(desiredHeight, Math.Max(height, 8));
-            y = Math.Max(taskbarRect.Top + margin, bottom - desiredHeightPx);
-            x = Math.Max(taskbarRect.Left + margin, taskbarRect.Right - width - margin);
+            var minimumContentHeight = Math.Max(1, (int)Math.Round(VerticalContentHeightDip * scale));
+            int? notificationTopLocal = geometry.NotificationArea.IsValid
+                ? Math.Max(0, geometry.NotificationArea.Top - taskbarRect.Top)
+                : null;
+
+            var placement = TaskbarVerticalPlacement.Place(
+                taskbarWidth,
+                taskbarHeight,
+                desiredWidth,
+                desiredHeight,
+                margin,
+                notificationTopLocal,
+                clearance,
+                minimumContentHeight);
+            x = placement.X;
+            y = placement.Y;
+            width = placement.Width;
+            height = placement.Height;
         }
         else
         {
+            height = Math.Min(desiredHeight, Math.Max(1, taskbarHeight - 4));
             int left;
             int right;
             if (centered)
@@ -116,7 +134,7 @@ public sealed class TaskbarEmbedder
                 left = geometry.TaskButtons.IsValid
                     ? geometry.TaskButtons.Right + Gap
                     : geometry.StartButton.IsValid ? geometry.StartButton.Right + Gap : taskbarRect.Left + taskbarHeight + Gap;
-                right = notificationLeft - Gap - Math.Max(1, (int)Math.Round(TrayClearance * dpi / 96d));
+                right = notificationLeft - Gap - Math.Max(1, (int)Math.Round(TrayClearance * scale));
             }
 
             var available = right - left;
@@ -157,7 +175,7 @@ public sealed class TaskbarEmbedder
         _window = window;
         _taskbar = taskbar;
         var label = isVertical
-            ? "已嵌入任务栏（垂直），靠通知区域上侧"
+            ? "已嵌入任务栏（垂直），位于隐藏图标/通知区域上方"
             : centered ? "已嵌入任务栏左侧" : "已嵌入通知区域左侧（预留系统托盘间距）";
         return TaskbarAttachResult.Succeeded(label, width * 96d / dpi);
     }
@@ -204,18 +222,6 @@ public sealed class TaskbarEmbedder
             (taskbarRect.Right - taskbarRect.Left) / 4;
     }
 
-    private TaskbarGeometry ReadGeometryCached(IntPtr taskbar, NativeRect taskbarRect)
-    {
-        var now = DateTime.UtcNow;
-        if (_geometryTaskbar == taskbar && now - _lastGeometryRead < TimeSpan.FromSeconds(2))
-            return _cachedGeometry;
-
-        _geometryTaskbar = taskbar;
-        _lastGeometryRead = now;
-        _cachedGeometry = ReadGeometry(taskbar, taskbarRect);
-        return _cachedGeometry;
-    }
-
     private static TaskbarGeometry ReadGeometry(IntPtr taskbar, NativeRect taskbarRect)
     {
         try
@@ -239,7 +245,11 @@ public sealed class TaskbarEmbedder
                         rectangle.Left >= taskbarRect.Right || rectangle.Bottom <= taskbarRect.Top ||
                         rectangle.Top >= taskbarRect.Bottom) continue;
 
-                    var span = new Span((int)Math.Floor(rectangle.Left), (int)Math.Ceiling(rectangle.Right));
+                    var span = new Span(
+                        (int)Math.Floor(rectangle.Left),
+                        (int)Math.Floor(rectangle.Top),
+                        (int)Math.Ceiling(rectangle.Right),
+                        (int)Math.Ceiling(rectangle.Bottom));
                     var automationId = current.AutomationId;
                     if (automationId == "StartButton") start = span;
                     else if (automationId == "WidgetsButton") widgets = span;
@@ -266,14 +276,18 @@ public sealed class TaskbarEmbedder
         var anchor = start.IsValid ? start.Right : buttons.Min(value => value.Left);
         var left = start.IsValid ? start.Left : anchor;
         var right = anchor;
+        var top = start.IsValid ? start.Top : buttons.Min(value => value.Top);
+        var bottom = start.IsValid ? start.Bottom : buttons.Max(value => value.Bottom);
         foreach (var button in buttons.OrderBy(value => value.Left))
         {
             if (button.Right <= anchor) continue;
             if (button.Left > right + 18) break;
             left = Math.Min(left, button.Left);
             right = Math.Max(right, button.Right);
+            top = Math.Min(top, button.Top);
+            bottom = Math.Max(bottom, button.Bottom);
         }
-        return right > anchor ? new Span(left, right) : start;
+        return right > anchor ? new Span(left, top, right, bottom) : start;
     }
 
     private static int FindNotificationAreaLeft(IntPtr taskbar, NativeRect taskbarRect)
@@ -303,12 +317,16 @@ public sealed class TaskbarEmbedder
         public static TaskbarGeometry Empty => new(Span.Invalid, Span.Invalid, Span.Invalid, Span.Invalid);
     }
 
-    private readonly record struct Span(int Left, int Right)
+    private readonly record struct Span(int Left, int Top, int Right, int Bottom)
     {
-        public bool IsValid => Right > Left;
-        public static Span Invalid => new(0, 0);
+        public bool IsValid => Right > Left && Bottom > Top;
+        public static Span Invalid => new(0, 0, 0, 0);
         public Span Union(Span other) => !IsValid ? other : !other.IsValid ? this
-            : new Span(Math.Min(Left, other.Left), Math.Max(Right, other.Right));
+            : new Span(
+                Math.Min(Left, other.Left),
+                Math.Min(Top, other.Top),
+                Math.Max(Right, other.Right),
+                Math.Max(Bottom, other.Bottom));
     }
 
     [StructLayout(LayoutKind.Sequential)]
