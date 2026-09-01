@@ -17,4 +17,7 @@
     <Authors>Noyorin0011</Authors>
     <Description>Windows taskbar island for AI API balances, usage and alerts.</Description>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
+  </ItemGroup>
 </Project>

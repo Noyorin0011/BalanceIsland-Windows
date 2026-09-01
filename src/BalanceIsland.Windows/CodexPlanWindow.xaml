@@ -1,0 +1,20 @@
+<Window x:Class="BalanceIsland.Windows.CodexPlanWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="ChatGPT/Codex 套餐登录" Width="980" Height="700" MinWidth="760" MinHeight="520"
+        Background="{DynamicResource WindowBackground}" WindowStartupLocation="CenterOwner"
+        Closing="Window_Closing">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <StackPanel Margin="0,0,0,10">
+            <TextBlock Text="ChatGPT/Codex 套餐余量（实验性）" FontSize="17" FontWeight="SemiBold" />
+            <TextBlock Text="此功能使用独立的 WebView2 登录会话读取套餐余量。登录 Cookie 与访问令牌只保存在专用 Profile 中，不会写入余额状态或日志。"
+                       Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,4,0,0" />
+        </StackPanel>
+        <wv2:WebView2 x:Name="PlanBrowser" Grid.Row="1" />
+    </Grid>
+</Window>
