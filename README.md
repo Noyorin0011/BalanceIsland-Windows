@@ -122,14 +122,13 @@ Windows 任务栏 AI API 余额与用量监控工具。当前仓库是以 Androi
 
 当前 Windows 版不宣称已经完成逐项 UI 等价。以下内容留给后续版本：
 
-- ChatGPT/Codex 非公开套餐接口、隔离登录会话、5 分钟实验页自动读取及重置周期通知。
-- 固定 Provider、套餐与 API 账户混合轮播。
 - 自动隐藏、五套语言及平滑长文字滚动。
 - 多显示器独立浮岛、任务栏自动隐藏与 Explorer 重启恢复的完整兼容测试。
 - MSIX、签名和正式 Release 工作流。
 
-非公开 ChatGPT/Codex 套餐接口不会在后台静默迁移；后续实现必须保留 v0.9.2
-“明确风险确认、会话视同密码、只存筛选后额度字段、仅实验页面自动联网”的安全边界。
+ChatGPT/Codex 套餐余量读取（v0.4.0）遵循 v0.9.2 的安全边界：明确风险确认、
+会话视同密码、只存筛选后额度字段、仅实验页面自动联网。使用教程与错误恢复见
+[`docs/CODEX_PLAN_USAGE.md`](docs/CODEX_PLAN_USAGE.md)。
 
 ## 构建
 
@@ -142,7 +141,7 @@ dotnet build BalanceIsland-Windows.sln -c Release
 dotnet run --project src/BalanceIsland.Windows/BalanceIsland.Windows.csproj
 ```
 
-GitHub Actions 会在 Windows runner 上执行 solution tests、Release build 和 `win-x64` publish，并上传 `BalanceIsland-Windows-v0.3.0-win-x64` artifact。
+GitHub Actions 会在 Windows runner 上执行 solution tests、Release build 和 `win-x64` publish，并上传 `BalanceIsland-Windows-v0.4.0-win-x64` artifact。
 
 ## 数据与安全
 
@@ -151,6 +150,8 @@ GitHub Actions 会在 Windows runner 上执行 solution tests、Release build �
   `%LOCALAPPDATA%\BalanceIsland\state.json`。
 - 日志和错误信息不得输出完整 API Key。
 - 应用只请求各 Provider 的官方 HTTPS API；不内置代理或证书绕过。
+- ChatGPT/Codex 套餐读取使用独立 WebView2 Profile（`%LOCALAPPDATA%\BalanceIsland\WebView2\ChatGPTPlan`），
+  登录 Cookie 与访问令牌只存在于该 Profile，不会写入 `state.json`、日志或通知。
 
 ## 许可证
 
