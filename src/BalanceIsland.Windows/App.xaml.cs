@@ -17,6 +17,106 @@ public partial class App : System.Windows.Application
     private DispatcherTimer? _islandHealthTimer;
     private bool _resourcesDisposed;
 
+    private CodexPlanUsageService? _codexPlanService;
+    private CodexPlanWindow? _codexPlanWindow;
+    private bool _codexPlanDisposed;
+
+    private CodexPlanUsageService EnsureCodexPlanService()
+    {
+        if (_codexPlanService is null)
+        {
+            if (_codexPlanWindow is null)
+            {
+                _codexPlanWindow = new CodexPlanWindow();
+                TrackWindow(_codexPlanWindow);
+            }
+            var browser = new WebView2CodexPlanBrowser(_codexPlanWindow.Browser);
+            var timer = new DispatcherCodexPlanTimer(Dispatcher);
+            _codexPlanService = new CodexPlanUsageService(_coordinator!, browser, TimeProvider.System, timer);
+        }
+        return _codexPlanService;
+    }
+
+    public void OpenCodexPlanLoginWindow(Window owner)
+    {
+        if (_coordinator is null || _coordinator.State.CodexPlanConsentVersion != 1) return;
+        if (_codexPlanWindow is null)
+        {
+            _codexPlanWindow = new CodexPlanWindow();
+            TrackWindow(_codexPlanWindow);
+        }
+        _codexPlanWindow.Owner = owner;
+        _codexPlanWindow.Show();
+        _codexPlanWindow.Activate();
+        _codexPlanWindow.NavigateToLogin();
+    }
+
+    public void StartCodexPlanService()
+    {
+        if (_coordinator is null || _coordinator.State.CodexPlanConsentVersion != 1 ||
+            !_coordinator.State.CodexPlanEnabled || !_coordinator.State.CodexPlanAutoRefreshEnabled)
+            return;
+        var service = EnsureCodexPlanService();
+        service.Start();
+    }
+
+    public async Task<CodexPlanRefreshResult> RefreshCodexPlanAsync(bool manual)
+    {
+        if (_coordinator is null || _coordinator.State.CodexPlanConsentVersion != 1)
+            return new CodexPlanRefreshResult(CodexPlanRefreshOutcome.NotReady, null);
+        var service = EnsureCodexPlanService();
+        await EnsureCodexPlanBrowserReadyAsync();
+        return await service.RefreshAsync(manual, CancellationToken.None);
+    }
+
+    public async Task<CodexPlanRefreshResult> ResumeCodexPlanAsync()
+    {
+        if (_coordinator is null || _coordinator.State.CodexPlanConsentVersion != 1)
+            return new CodexPlanRefreshResult(CodexPlanRefreshOutcome.NotReady, null);
+        var service = EnsureCodexPlanService();
+        await EnsureCodexPlanBrowserReadyAsync();
+        return await service.ResumeAndRefreshAsync(CancellationToken.None);
+    }
+
+    public async Task DisconnectCodexPlanAsync()
+    {
+        if (_codexPlanService is null) return;
+        await _codexPlanService.DisconnectAsync(CancellationToken.None);
+        _codexPlanWindow?.Close();
+        _codexPlanWindow = null;
+        _codexPlanService = null;
+    }
+
+    private async Task EnsureCodexPlanBrowserReadyAsync()
+    {
+        if (_codexPlanWindow is null)
+        {
+            _codexPlanWindow = new CodexPlanWindow();
+            TrackWindow(_codexPlanWindow);
+        }
+        // The window must be realized so the WebView2 core is created before a read.
+        if (_codexPlanWindow.Browser.CoreWebView2 is null)
+            await _codexPlanWindow.Browser.EnsureCoreWebView2Async();
+    }
+
+    private void DisposeCodexPlanResources()
+    {
+        if (_codexPlanDisposed) return;
+        _codexPlanDisposed = true;
+        _codexPlanWindow?.Close();
+        _codexPlanWindow = null;
+        _codexPlanService?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        _codexPlanService = null;
+    }
+
+    private void DisposeCodexPlanSynchronously()
+    {
+        _codexPlanWindow?.Close();
+        _codexPlanWindow = null;
+        _codexPlanService?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        _codexPlanService = null;
+    }
+
     public NotificationChannelStatus NotificationStatus { get; private set; } = NotificationChannelStatus.Unavailable;
     public event EventHandler? NotificationStatusChanged;
 
@@ -73,6 +173,11 @@ public partial class App : System.Windows.Application
         menu.Items.Add("显示/隐藏任务栏浮岛", null, (_, _) =>
         {
             SetIslandVisible(!(_coordinator?.State.IslandEnabled ?? false));
+        });
+        menu.Items.Add(new Forms.ToolStripSeparator());
+        menu.Items.Add("Codex 套餐", null, (_, _) =>
+        {
+            if (_mainWindow is not null) OpenCodexPlanLoginWindow(_mainWindow);
         });
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("退出", null, (_, _) => ExitApplication());
@@ -255,6 +360,7 @@ public partial class App : System.Windows.Application
         _appIcon?.Dispose();
         _island?.Close();
         _mainWindow?.Close();
+        DisposeCodexPlanSynchronously();
         if (_coordinator is not null)
         {
             _coordinator.StateChanged -= Coordinator_StateChanged;

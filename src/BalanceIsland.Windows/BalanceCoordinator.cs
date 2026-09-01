@@ -183,9 +183,10 @@ public sealed class BalanceCoordinator : IDisposable
     public IslandDisplayGroup CreateDisplayGroup(
         string name,
         IslandGroupMode mode,
-        IEnumerable<string> accountIds)
+        IEnumerable<string> accountIds,
+        bool includeCodexPlanUsage = false)
     {
-        var group = IslandDisplayGroups.Create(State, name, mode, accountIds);
+        var group = IslandDisplayGroups.Create(State, name, mode, accountIds, includeCodexPlanUsage);
         SaveAndNotify();
         return group;
     }
@@ -194,9 +195,10 @@ public sealed class BalanceCoordinator : IDisposable
         string groupId,
         string name,
         IslandGroupMode mode,
-        IEnumerable<string> accountIds)
+        IEnumerable<string> accountIds,
+        bool includeCodexPlanUsage = false)
     {
-        var group = IslandDisplayGroups.Update(State, groupId, name, mode, accountIds);
+        var group = IslandDisplayGroups.Update(State, groupId, name, mode, accountIds, includeCodexPlanUsage);
         SaveAndNotify();
         return group;
     }

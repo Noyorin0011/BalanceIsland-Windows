@@ -366,6 +366,7 @@ public partial class MainWindow : Window
             DisplayGroupBox.SelectedItem = null;
             DisplayGroupNameBox.Text = "";
             DisplayGroupModeBox.SelectedValue = IslandGroupMode.Rotation;
+            DisplayGroupIncludePlanBox.IsChecked = false;
             DisplayGroupAccountsList.UnselectAll();
         }
         finally
@@ -382,15 +383,16 @@ public partial class MainWindow : Window
         try
         {
             var accountIds = SelectedDisplayGroupAccountIds();
+            var includePlan = DisplayGroupIncludePlanBox.IsChecked == true;
             if (DisplayGroupBox.SelectedValue is string groupId)
             {
                 _preferredDisplayGroupId = groupId;
-                _coordinator.UpdateDisplayGroup(groupId, DisplayGroupNameBox.Text, mode, accountIds);
+                _coordinator.UpdateDisplayGroup(groupId, DisplayGroupNameBox.Text, mode, accountIds, includePlan);
                 StatusText.Text = "浮岛显示分组已保存。";
             }
             else
             {
-                var group = _coordinator.CreateDisplayGroup(DisplayGroupNameBox.Text, mode, accountIds);
+                var group = _coordinator.CreateDisplayGroup(DisplayGroupNameBox.Text, mode, accountIds, includePlan);
                 _preferredDisplayGroupId = group.Id;
                 RefreshRows();
                 StatusText.Text = $"已创建分组“{group.Name}”。";
@@ -452,6 +454,7 @@ public partial class MainWindow : Window
         {
             DisplayGroupNameBox.Text = group.Name;
             DisplayGroupModeBox.SelectedValue = group.Mode;
+            DisplayGroupIncludePlanBox.IsChecked = group.IncludeCodexPlanUsage;
             DisplayGroupAccountsList.UnselectAll();
             foreach (var choice in DisplayGroupAccountsList.Items.OfType<AccountChoice>()
                          .Where(choice => group.AccountIds.Contains(choice.Id, StringComparer.Ordinal)))
@@ -497,6 +500,13 @@ public partial class MainWindow : Window
             DisplayGroupModeBox.SelectedValue,
             providers);
 
+        DisplayGroupIncludePlanBox.IsEnabled = !isAggregate;
+        if (isAggregate && DisplayGroupIncludePlanBox.IsChecked == true)
+        {
+            _loadingControls = true;
+            DisplayGroupIncludePlanBox.IsChecked = false;
+            _loadingControls = false;
+        }
         SaveDisplayGroupButton.IsEnabled = !invalidAggregate;
         DisplayGroupValidationText.Text = invalidAggregate
             ? "聚合分组只能包含同一 Provider 的账户。"
@@ -696,6 +706,182 @@ public partial class MainWindow : Window
         };
     }
 
+    private void CodexPlanConsent_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loadingControls) return;
+        var accepted = CodexPlanConsentBox.IsChecked == true;
+        _coordinator.SetCodexPlanConsent(accepted);
+        RefreshCodexPlanControls();
+        StatusText.Text = accepted
+            ? "已确认风险；可以打开登录窗口并读取套餐余量。"
+            : "已撤销套餐读取授权，功能与自动刷新均已关闭。";
+    }
+
+    private void CodexPlanOpenLogin_Click(object sender, RoutedEventArgs e)
+    {
+        (_app as App)?.OpenCodexPlanLoginWindow(this);
+    }
+
+    private async void CodexPlanRead_Click(object sender, RoutedEventArgs e)
+    {
+        if (_coordinator.State.CodexPlanReadState.AutoRefreshPaused)
+        {
+            StatusText.Text = "套餐读取因 401/403/429 暂停；请点击“重试并恢复”。";
+            return;
+        }
+        SetBusy("正在读取套餐余量……", true);
+        try
+        {
+            var result = await (_app as App)?.RefreshCodexPlanAsync(true) ?? new CodexPlanRefreshResult(CodexPlanRefreshOutcome.NotReady, null);
+            StatusText.Text = result.Outcome switch
+            {
+                CodexPlanRefreshOutcome.Success => "套餐余量已更新。",
+                CodexPlanRefreshOutcome.TooSoon => "距上次读取不足 5 分钟，请稍后再试。",
+                CodexPlanRefreshOutcome.Paused => "套餐读取已暂停（401/403/429）；请点击“重试并恢复”。",
+                CodexPlanRefreshOutcome.NotReady => "尚未就绪：请确认风险并启用功能。",
+                _ => "读取失败，请查看下方错误信息。"
+            };
+        }
+        finally
+        {
+            SetBusy(StatusText.Text, false);
+            RefreshCodexPlanControls();
+        }
+    }
+
+    private async void CodexPlanResume_Click(object sender, RoutedEventArgs e)
+    {
+        SetBusy("正在重试并恢复套餐读取……", true);
+        try
+        {
+            var result = await (_app as App)?.ResumeCodexPlanAsync() ?? new CodexPlanRefreshResult(CodexPlanRefreshOutcome.NotReady, null);
+            StatusText.Text = result.Outcome switch
+            {
+                CodexPlanRefreshOutcome.Success => "已恢复并读取成功。",
+                CodexPlanRefreshOutcome.TooSoon => "距上次网络尝试不足 5 分钟，请稍后再试。",
+                CodexPlanRefreshOutcome.NotReady => "尚未就绪：请确认风险并启用功能。",
+                _ => "重试失败，请查看下方错误信息。"
+            };
+        }
+        finally
+        {
+            SetBusy(StatusText.Text, false);
+            RefreshCodexPlanControls();
+        }
+    }
+
+    private void CodexPlanAutoRefresh_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loadingControls) return;
+        if (CodexPlanAutoRefreshBox.IsChecked == true && !ConfirmBackgroundAutoRefresh())
+        {
+            _loadingControls = true;
+            CodexPlanAutoRefreshBox.IsChecked = false;
+            _loadingControls = false;
+            return;
+        }
+        _coordinator.SetCodexPlanSettings(
+            _coordinator.State.CodexPlanEnabled,
+            CodexPlanAutoRefreshBox.IsChecked == true,
+            CodexPlanShowInIslandBox.IsChecked == true);
+        if (CodexPlanAutoRefreshBox.IsChecked == true)
+            (_app as App)?.StartCodexPlanService();
+        RefreshCodexPlanControls();
+    }
+
+    private bool ConfirmBackgroundAutoRefresh()
+    {
+        var result = MessageBox.Show(this,
+            "启用自动刷新后，即使登录窗口已隐藏，应用仍会在后台每 5 分钟联网读取一次套餐余量。\n\n是否继续？",
+            "确认后台自动刷新", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        return result == MessageBoxResult.Yes;
+    }
+
+    private void CodexPlanShowInIsland_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loadingControls) return;
+        _coordinator.SetCodexPlanSettings(
+            _coordinator.State.CodexPlanEnabled,
+            CodexPlanAutoRefreshBox.IsChecked == true,
+            CodexPlanShowInIslandBox.IsChecked == true);
+        RefreshCodexPlanControls();
+    }
+
+    private async void CodexPlanDisconnect_Click(object sender, RoutedEventArgs e)
+    {
+        if (MessageBox.Show(this,
+                "将清除专用登录 Profile、Cookie 与所有套餐数据，并停止自动刷新。是否继续？",
+                "断开并清除", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        SetBusy("正在断开并清除……", true);
+        try
+        {
+            var app = _app as App;
+            if (app is not null) await app.DisconnectCodexPlanAsync();
+            StatusText.Text = "套餐读取已断开，登录 Profile 与数据已清除。";
+        }
+        finally
+        {
+            SetBusy(StatusText.Text, false);
+            RefreshCodexPlanControls();
+        }
+    }
+
+    private void DisplayGroupIncludePlan_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loadingControls) return;
+        if (DisplayGroupModeBox.SelectedValue is IslandGroupMode.Aggregate &&
+            DisplayGroupIncludePlanBox.IsChecked == true)
+        {
+            _loadingControls = true;
+            DisplayGroupIncludePlanBox.IsChecked = false;
+            _loadingControls = false;
+            StatusText.Text = "聚合分组不能包含套餐余量。";
+            return;
+        }
+        UpdateDisplayGroupValidation();
+    }
+
+    private void RefreshCodexPlanControls()
+    {
+        var state = _coordinator.State;
+        _loadingControls = true;
+        try
+        {
+            CodexPlanConsentBox.IsChecked = state.CodexPlanConsentVersion == 1;
+            CodexPlanOpenLoginButton.IsEnabled = state.CodexPlanConsentVersion == 1;
+            CodexPlanReadButton.IsEnabled = state.CodexPlanEnabled &&
+                !state.CodexPlanReadState.AutoRefreshPaused;
+            CodexPlanResumeButton.Visibility = state.CodexPlanEnabled &&
+                state.CodexPlanReadState.AutoRefreshPaused
+                ? Visibility.Visible : Visibility.Collapsed;
+            CodexPlanAutoRefreshBox.IsChecked = state.CodexPlanAutoRefreshEnabled;
+            CodexPlanShowInIslandBox.IsChecked = state.CodexPlanShowInIsland;
+            CodexPlanDisconnectButton.IsEnabled = state.CodexPlanConsentVersion == 1 ||
+                state.CodexPlanEnabled || state.CodexPlanUsage is not null;
+            var lastSuccess = state.CodexPlanReadState.LastSuccessfulAt;
+            CodexPlanStatusText.Text = state.CodexPlanUsage is null
+                ? "尚未读取套餐余量。"
+                : $"上次成功：{lastSuccess?.LocalDateTime.ToString("MM-dd HH:mm") ?? "—"} · 套餐 {state.CodexPlanUsage.PlanType}";
+            CodexPlanErrorText.Text = state.CodexPlanReadState.LastError is { } error
+                ? $"最近错误：{CodexPlanErrorDescription(error)}"
+                : "";
+        }
+        finally
+        {
+            _loadingControls = false;
+        }
+    }
+
+    private static string CodexPlanErrorDescription(CodexPlanReadError error) => error switch
+    {
+        CodexPlanReadError.Auth => "登录失效或权限不足（401/403）",
+        CodexPlanReadError.RateLimit => "请求受限（429），已暂停自动刷新",
+        CodexPlanReadError.Network => "网络连接失败",
+        CodexPlanReadError.Http => "服务器返回异常状态",
+        CodexPlanReadError.Parse => "响应解析失败",
+        _ => "运行时错误"
+    };
+
     public void UpdateIslandModeStatus(string status) => IslandModeStatus.Text = status;
 
     private void RefreshRows()
@@ -771,6 +957,7 @@ public partial class MainWindow : Window
         else PrepareNewDisplayGroup();
         UpdateCustomColorControls();
         UpdateNotificationChannelStatus();
+        RefreshCodexPlanControls();
     }
 
     private void SetBusy(string message, bool busy)

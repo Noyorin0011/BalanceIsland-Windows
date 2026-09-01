@@ -225,8 +225,10 @@
                                 </Grid>
                                 <TextBlock Text="选择账户（可多选）" Margin="0,2,0,4" />
                                 <ListBox x:Name="DisplayGroupAccountsList" DisplayMemberPath="Display" SelectionMode="Multiple"
-                                         SelectionChanged="DisplayGroupSelection_Changed" Height="130"
+                                         SelectionChanged="DisplayGroupSelection_Changed" Height="110"
                                          Background="{DynamicResource ControlBackground}" BorderBrush="{DynamicResource ControlBorder}" />
+                                <CheckBox x:Name="DisplayGroupIncludePlanBox" Content="包含 ChatGPT/Codex 套餐余量"
+                                          Checked="DisplayGroupIncludePlan_Changed" Unchecked="DisplayGroupIncludePlan_Changed" Margin="0,6,0,0" />
                                 <TextBlock x:Name="DisplayGroupValidationText" Foreground="{DynamicResource SecondaryText}"
                                            TextWrapping="Wrap" Margin="0,6,0,0" />
                                 <TextBlock x:Name="ActiveDisplayGroupStatusText" Foreground="{DynamicResource SecondaryText}"
@@ -318,6 +320,50 @@
                                         <DataGridTextColumn Header="限制说明" Binding="{Binding Limitations}" Width="*" />
                                     </DataGrid.Columns>
                                 </DataGrid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Codex 套餐">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="14">
+                        <TextBlock Text="ChatGPT / Codex 套餐余量（实验性）" FontSize="18" FontWeight="SemiBold" />
+                        <TextBlock Text="读取 ChatGPT/Codex 套餐的 5 小时与每周余量窗口。此功能使用非公开接口与独立 WebView2 登录会话，可能随网页版变动而失效。"
+                                   Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,2,0,14" />
+                        <Border Background="{DynamicResource CardBackground}" CornerRadius="10" Padding="16">
+                            <StackPanel>
+                                <TextBlock Text="风险与确认" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock Text="启用后应用会创建专用 WebView2 登录会话并联网读取套餐余量。登录状态不会写入余额状态或日志；关闭窗口后会话保留在专用 Profile 中。"
+                                           Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,3,0,8" />
+                                <CheckBox x:Name="CodexPlanConsentBox" Content="我已了解风险，允许创建登录会话并联网读取"
+                                          Checked="CodexPlanConsent_Changed" Unchecked="CodexPlanConsent_Changed" />
+                                <Button x:Name="CodexPlanOpenLoginButton" Content="打开登录窗口" Click="CodexPlanOpenLogin_Click" Margin="0,12,0,0" IsEnabled="False" />
+                                <TextBlock Text="在登录窗口登录后回到本页点击“读取套餐余量”。" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                            </StackPanel>
+                        </Border>
+                        <Border Background="{DynamicResource CardBackground}" CornerRadius="10" Padding="16" Margin="0,14,0,0">
+                            <StackPanel>
+                                <TextBlock Text="读取与调度" FontSize="16" FontWeight="SemiBold" />
+                                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                    <Button x:Name="CodexPlanReadButton" Content="读取套餐余量" Click="CodexPlanRead_Click" />
+                                    <Button x:Name="CodexPlanResumeButton" Content="重试并恢复" Click="CodexPlanResume_Click" Visibility="Collapsed" Margin="8,0,0,0" />
+                                </StackPanel>
+                                <CheckBox x:Name="CodexPlanAutoRefreshBox" Content="每 5 分钟自动更新（固定，不可调短；429 后暂停）"
+                                          Checked="CodexPlanAutoRefresh_Changed" Unchecked="CodexPlanAutoRefresh_Changed" Margin="0,10,0,4" />
+                                <CheckBox x:Name="CodexPlanShowInIslandBox" Content="显示在浮岛（默认轮播与自定义分组）"
+                                          Checked="CodexPlanShowInIsland_Changed" Unchecked="CodexPlanShowInIsland_Changed" Margin="0,0,0,10" />
+                                <TextBlock x:Name="CodexPlanStatusText" Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" />
+                                <TextBlock x:Name="CodexPlanErrorText" Foreground="#FFFF5C6C" TextWrapping="Wrap" Margin="0,4,0,0" />
+                            </StackPanel>
+                        </Border>
+                        <Border Background="{DynamicResource CardBackground}" CornerRadius="10" Padding="16" Margin="0,14,0,0">
+                            <StackPanel>
+                                <TextBlock Text="断开并清除" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock Text="清除专用 WebView2 Profile、登录 Cookie 与所有套餐数据，并停止自动刷新。"
+                                           Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,3,0,8" />
+                                <Button x:Name="CodexPlanDisconnectButton" Content="断开并清除" Click="CodexPlanDisconnect_Click" IsEnabled="False" />
                             </StackPanel>
                         </Border>
                     </StackPanel>

@@ -42,12 +42,14 @@ public sealed class WebView2CodexPlanBrowser : ICodexPlanBrowser, IDisposable
         """;
 
     private readonly string _userDataFolder;
-    private WebView2? _webView;
+    private readonly WebView2 _webView;
     private bool _initialized;
     private bool _disposed;
 
-    public WebView2CodexPlanBrowser()
+    public WebView2CodexPlanBrowser(WebView2 webView)
     {
+        ArgumentNullException.ThrowIfNull(webView);
+        _webView = webView;
         _userDataFolder = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             ProfileRelativePath);
@@ -57,7 +59,7 @@ public sealed class WebView2CodexPlanBrowser : ICodexPlanBrowser, IDisposable
     {
         get
         {
-            if (_webView is null || _webView.CoreWebView2 is null || _webView.Source is null)
+            if (_webView.CoreWebView2 is null || _webView.Source is null)
                 return false;
             return CodexPlanOriginPolicy.CanRead(_webView.Source);
         }
@@ -69,7 +71,6 @@ public sealed class WebView2CodexPlanBrowser : ICodexPlanBrowser, IDisposable
         if (_initialized) return;
         var environment = await CoreWebView2Environment.CreateAsync(null, _userDataFolder);
         cancellationToken.ThrowIfCancellationRequested();
-        _webView = new WebView2();
         await _webView.EnsureCoreWebView2Async(environment);
         ConfigureSettings();
         WireSecurityEvents();
@@ -82,14 +83,14 @@ public sealed class WebView2CodexPlanBrowser : ICodexPlanBrowser, IDisposable
         if (!IsOnTrustedUsageOrigin)
             return new CodexPlanBrowserResult(0, "{}");
 
-        var scriptResult = await _webView!.CoreWebView2!.ExecuteScriptAsync(ReadUsageScript);
+        var scriptResult = await _webView.CoreWebView2!.ExecuteScriptAsync(ReadUsageScript);
         var envelope = CodexPlanScriptEnvelopeParser.Parse(scriptResult);
         return new CodexPlanBrowserResult(envelope.StatusCode, envelope.BodyJson);
     }
 
     public async Task ClearProfileAsync(CancellationToken cancellationToken)
     {
-        if (_webView?.CoreWebView2 is { } core)
+        if (_webView.CoreWebView2 is { } core)
         {
             try
             {
@@ -107,9 +108,6 @@ public sealed class WebView2CodexPlanBrowser : ICodexPlanBrowser, IDisposable
             {
             }
         }
-        _webView?.Dispose();
-        _webView = null;
-
         try
         {
             if (Directory.Exists(_userDataFolder))
@@ -132,18 +130,16 @@ public sealed class WebView2CodexPlanBrowser : ICodexPlanBrowser, IDisposable
         catch (Exception)
         {
         }
-        _webView?.Dispose();
     }
 
     public void Dispose()
     {
         _disposed = true;
-        _webView?.Dispose();
     }
 
     private void ConfigureSettings()
     {
-        var settings = _webView!.CoreWebView2!.Settings;
+        var settings = _webView.CoreWebView2!.Settings;
         settings.AreDevToolsEnabled = false;
         settings.AreDefaultContextMenusEnabled = false;
         settings.IsPasswordAutosaveEnabled = false;
@@ -153,7 +149,7 @@ public sealed class WebView2CodexPlanBrowser : ICodexPlanBrowser, IDisposable
 
     private void WireSecurityEvents()
     {
-        var core = _webView!.CoreWebView2!;
+        var core = _webView.CoreWebView2!;
         core.NavigationStarting += OnNavigationStarting;
         core.PermissionRequested += OnPermissionRequested;
         core.DownloadStarting += OnDownloadStarting;
