@@ -48,9 +48,9 @@ public sealed class CodexPlanUsageServiceTests
         var (service, browser, clock, _, _) = CreateService();
         await using (service)
         {
-            await service.RefreshAsync(true, CancellationToken.None);
             browser.CompleteSuccess(Usage(82));
-            await Task.Delay(10);
+            var first = await service.RefreshAsync(true, CancellationToken.None);
+            Assert.Equal(CodexPlanRefreshOutcome.Success, first.Outcome);
             clock.Advance(TimeSpan.FromMinutes(4).Add(TimeSpan.FromSeconds(59)));
             var result = await service.RefreshAsync(true, CancellationToken.None);
             Assert.Equal(CodexPlanRefreshOutcome.TooSoon, result.Outcome);
@@ -64,11 +64,12 @@ public sealed class CodexPlanUsageServiceTests
         var (service, browser, _, timer, coordinator) = CreateService();
         await using (service)
         {
-            await service.RefreshAsync(true, CancellationToken.None);
-            browser.CompleteSuccess(Usage(82));
-            await Task.Delay(10);
+            // A previous successful snapshot exists but the five-minute attempt floor
+            // is not consumed by it (SaveCodexPlanUsage never records an attempt).
+            coordinator.SaveCodexPlanUsage(Usage(82));
             browser.EnqueueFailure(429);
-            await service.RefreshAsync(true, CancellationToken.None);
+            var result = await service.RefreshAsync(true, CancellationToken.None);
+            Assert.Equal(CodexPlanRefreshOutcome.Paused, result.Outcome);
             Assert.Equal(82, coordinator.State.CodexPlanUsage!.Primary!.RemainingPercent);
             Assert.True(coordinator.State.CodexPlanReadState.AutoRefreshPaused);
             Assert.False(timer.IsScheduled);
@@ -95,6 +96,7 @@ public sealed class CodexPlanUsageServiceTests
         var (service, browser, _, _, coordinator) = CreateService();
         await using (service)
         {
+            browser.CompleteSuccess(Usage(82));
             var result = await service.RefreshAsync(true, CancellationToken.None);
             Assert.Equal(CodexPlanRefreshOutcome.Success, result.Outcome);
             Assert.Equal(82, coordinator.State.CodexPlanUsage!.Primary!.RemainingPercent);

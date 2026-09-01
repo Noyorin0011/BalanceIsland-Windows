@@ -36,7 +36,7 @@ public sealed class CodexPlanUsageService : IAsyncDisposable
         if (_disposed) return new CodexPlanRefreshResult(CodexPlanRefreshOutcome.Failed, null);
         if (!CanRun(out var reason))
             return new CodexPlanRefreshResult(reason, null);
-        if (!manual && _coordinator.State.CodexPlanReadState.AutoRefreshPaused)
+        if (_coordinator.State.CodexPlanReadState.AutoRefreshPaused)
             return new CodexPlanRefreshResult(CodexPlanRefreshOutcome.Paused, null);
 
         var now = _clock.GetUtcNow();
