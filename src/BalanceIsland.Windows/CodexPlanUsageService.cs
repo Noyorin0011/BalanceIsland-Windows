@@ -51,10 +51,19 @@ public sealed class CodexPlanUsageService : IAsyncDisposable
         try
         {
             var generation = _generation;
-            _coordinator.MarkCodexPlanAttempt(now);
+            try
+            {
+                await _browser.InitializeAsync(cancellationToken);
+            }
+            catch (Exception)
+            {
+                _coordinator.MarkCodexPlanFailure(CodexPlanReadError.Runtime);
+                return new CodexPlanRefreshResult(CodexPlanRefreshOutcome.Failed, null);
+            }
             if (!_browser.IsOnTrustedUsageOrigin)
                 return new CodexPlanRefreshResult(CodexPlanRefreshOutcome.NotReady, null);
 
+            _coordinator.MarkCodexPlanAttempt(now);
             CodexPlanBrowserResult result;
             try
             {
@@ -62,6 +71,7 @@ public sealed class CodexPlanUsageService : IAsyncDisposable
             }
             catch (Exception)
             {
+                _coordinator.MarkCodexPlanFailure(CodexPlanReadError.Runtime);
                 return new CodexPlanRefreshResult(CodexPlanRefreshOutcome.Failed, null);
             }
             if (generation != _generation)

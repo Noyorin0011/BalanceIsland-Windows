@@ -55,6 +55,14 @@ public sealed class CodexPlanUsageLogicTests
         Assert.DoesNotContain("example.test", envelope.BodyJson);
     }
 
+    [Fact]
+    public void Script_envelope_rejects_payload_over_64_kib()
+    {
+        var huge = new string('x', 70 * 1024);
+        var result = JsonSerializer.Serialize(new { status = 200, body = huge });
+        Assert.Throws<FormatException>(() => CodexPlanScriptEnvelopeParser.Parse(result));
+    }
+
     private static CodexPlanUsage Usage(DateTimeOffset updatedAt) => new()
     {
         PlanType = "plus",

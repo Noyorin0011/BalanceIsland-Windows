@@ -118,7 +118,7 @@ public static class CodexPlanScriptEnvelopeParser
     public static CodexPlanScriptEnvelope Parse(string executeScriptResult)
     {
         ArgumentNullException.ThrowIfNull(executeScriptResult);
-        if (executeScriptResult.Length > MaxEnvelopeBytes)
+        if (System.Text.Encoding.UTF8.GetByteCount(executeScriptResult) > MaxEnvelopeBytes)
             throw new FormatException("脚本执行结果超过 64 KiB 上限。");
 
         JsonNode? node;

@@ -100,6 +100,32 @@ public sealed class CodexPlanUsageServiceTests
             Assert.Equal(82, coordinator.State.CodexPlanUsage!.Primary!.RemainingPercent);
         }
     }
+
+    [Fact]
+    public async Task Browser_initialization_failure_maps_to_runtime_error()
+    {
+        var (service, browser, _, _, coordinator) = CreateService();
+        browser.FailInitialize = true;
+        await using (service)
+        {
+            var result = await service.RefreshAsync(true, CancellationToken.None);
+            Assert.Equal(CodexPlanRefreshOutcome.Failed, result.Outcome);
+            Assert.Equal(CodexPlanReadError.Runtime, coordinator.State.CodexPlanReadState.LastError);
+        }
+    }
+
+    [Fact]
+    public async Task Untrusted_origin_does_not_consume_the_five_minute_attempt()
+    {
+        var (service, browser, _, _, coordinator) = CreateService();
+        browser.OnTrustedOrigin = false;
+        await using (service)
+        {
+            var result = await service.RefreshAsync(true, CancellationToken.None);
+            Assert.Equal(CodexPlanRefreshOutcome.NotReady, result.Outcome);
+            Assert.Null(coordinator.State.CodexPlanReadState.LastAttemptAt);
+        }
+    }
 }
 
 internal sealed class FakeCodexPlanBrowser : ICodexPlanBrowser
@@ -107,6 +133,8 @@ internal sealed class FakeCodexPlanBrowser : ICodexPlanBrowser
     private readonly TaskCompletionSource<CodexPlanBrowserResult> _pending = new();
     private readonly Queue<int> _failures = new();
     public int ReadCount { get; private set; }
+    public bool FailInitialize { get; set; }
+    public bool OnTrustedOrigin { get; set; } = true;
 
     public void CompleteSuccess(CodexPlanUsage usage)
     {
@@ -116,9 +144,12 @@ internal sealed class FakeCodexPlanBrowser : ICodexPlanBrowser
 
     public void EnqueueFailure(int statusCode) => _failures.Enqueue(statusCode);
 
-    public Task InitializeAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task InitializeAsync(CancellationToken cancellationToken) =>
+        FailInitialize
+            ? Task.FromException(new InvalidOperationException("browser init failed"))
+            : Task.CompletedTask;
 
-    public bool IsOnTrustedUsageOrigin => true;
+    public bool IsOnTrustedUsageOrigin => OnTrustedOrigin;
 
     public Task<CodexPlanBrowserResult> ReadFilteredUsageAsync(CancellationToken cancellationToken)
     {

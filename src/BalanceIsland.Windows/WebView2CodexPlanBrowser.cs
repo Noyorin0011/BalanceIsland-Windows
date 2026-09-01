@@ -9,7 +9,7 @@ namespace BalanceIsland.Windows;
 
 public sealed class WebView2CodexPlanBrowser : ICodexPlanBrowser, IDisposable
 {
-    private const string ProfileRelativePath = @"BalanceIslandWebView2ChatGPTPlan";
+    private const string ProfileParentRelativePath = "BalanceIsland";
     private const string ReadUsageScript = """
         (async () => {
           try {
@@ -52,7 +52,7 @@ public sealed class WebView2CodexPlanBrowser : ICodexPlanBrowser, IDisposable
         _webView = webView;
         _userDataFolder = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            ProfileRelativePath);
+            ProfileParentRelativePath, "WebView2", "ChatGPTPlan");
     }
 
     public bool IsOnTrustedUsageOrigin

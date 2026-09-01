@@ -94,9 +94,14 @@ public partial class App : System.Windows.Application
             _codexPlanWindow = new CodexPlanWindow();
             TrackWindow(_codexPlanWindow);
         }
-        // The window must be realized so the WebView2 core is created before a read.
+        // The window must be realized (shown once) so the WebView2 core and handle exist
+        // before a background read; it is then hidden so the user sees no window.
         if (_codexPlanWindow.Browser.CoreWebView2 is null)
+        {
+            _codexPlanWindow.Show();
+            _codexPlanWindow.Hide();
             await _codexPlanWindow.Browser.EnsureCoreWebView2Async();
+        }
     }
 
     private void DisposeCodexPlanResources()
