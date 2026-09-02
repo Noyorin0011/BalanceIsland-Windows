@@ -83,11 +83,23 @@ public static class TaskbarFloatingPlacement
         int taskbarLeft,
         int taskbarRight,
         int? startLeft,
+        int? startRight,
         bool registryCentered)
     {
-        return startLeft is { } left
-            ? left > taskbarLeft + (taskbarRight - taskbarLeft) / 4
-            : registryCentered;
+        if (startLeft is not { } left ||
+            startRight is not { } right ||
+            right <= left ||
+            left < taskbarLeft ||
+            right > taskbarRight)
+        {
+            return registryCentered;
+        }
+
+        // A left-aligned Start button occupies the first button slot. Compare its offset with
+        // the observed button width instead of a percentage of the taskbar: a crowded centered
+        // group can legitimately shift Start well inside the old 25% threshold.
+        var startWidth = right - left;
+        return left > taskbarLeft + startWidth * 2;
     }
 
     public static bool ShouldRestackForReorder(
