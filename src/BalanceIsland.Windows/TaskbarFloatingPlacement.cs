@@ -57,6 +57,28 @@ public static class TaskbarFloatingPlacement
         return new Result(Math.Clamp(desired, safeLeft, safeRight), taskbarTop, fitsLeftAligned);
     }
 
+    public static Result PlaceLegacyHorizontal(
+        int taskbarLeft,
+        int taskbarTop,
+        int taskbarHeight,
+        int? widgetsLeft,
+        int? widgetsRight,
+        int islandWidth,
+        int islandHeight,
+        int gap)
+    {
+        var safeGap = Math.Max(0, gap);
+        var safeHeight = Math.Max(1, islandHeight);
+        var left = PreferredLeft(
+            taskbarLeft + safeGap,
+            widgetsLeft,
+            widgetsRight,
+            islandWidth,
+            safeGap);
+        var top = taskbarTop + Math.Max(0, (Math.Max(1, taskbarHeight) - safeHeight) / 2);
+        return new Result(left, top, true);
+    }
+
     public static bool ShouldApply<T>(
         T? previous,
         T current,
