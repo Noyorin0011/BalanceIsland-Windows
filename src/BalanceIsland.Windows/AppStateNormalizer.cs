@@ -12,6 +12,12 @@ public static class AppStateNormalizer
         state.DailyUsage ??= [];
         state.Alerts ??= [];
         state.DisplayGroups ??= [];
+        state.CodexPlanReadState ??= new CodexPlanReadState();
+
+        if (state.CodexPlanConsentVersion is < 0 or > 1)
+            state.CodexPlanConsentVersion = 0;
+        if (state.CodexPlanReadState.LastError is not (CodexPlanReadError.Auth or CodexPlanReadError.RateLimit))
+            state.CodexPlanReadState.AutoRefreshPaused = false;
 
         RemoveNullAndOrphanDictionaryEntries(state);
         NormalizeNullableStrings(state);

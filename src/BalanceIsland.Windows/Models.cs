@@ -228,6 +228,7 @@ public sealed class IslandDisplayGroup
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public Provider? AggregateProvider { get; set; }
     public List<string> AccountIds { get; set; } = [];
+    public bool IncludeCodexPlanUsage { get; set; }
 }
 
 public sealed class IslandDisplayItem
@@ -285,6 +286,13 @@ public sealed class AppState
     public bool NotifyWarning15 { get; set; } = true;
     public bool NotifyCritical { get; set; } = true;
     public bool NotifyAnomaly { get; set; } = true;
+    public int CodexPlanConsentVersion { get; set; }
+    public bool CodexPlanEnabled { get; set; }
+    public bool CodexPlanAutoRefreshEnabled { get; set; }
+    public bool CodexPlanShowInIsland { get; set; } = true;
+    public CodexPlanUsage? CodexPlanUsage { get; set; }
+    public CodexPlanReadState CodexPlanReadState { get; set; } = new();
+    public bool CodexPlanProfileCleanupPending { get; set; }
 }
 
 public sealed record ApiCredential(Account Account, string ApiKey);

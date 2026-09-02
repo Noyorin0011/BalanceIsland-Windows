@@ -41,6 +41,9 @@ public partial class TaskbarIslandWindow : Window
     private const double MinimumHeight = 28;
     private const double MaximumWidth = 480;
     private const double MaximumHeight = 100;
+    // Reserve at least three notification-area buttons (≈40 DIP each) left of the system tray.
+    private const double NotificationReserveDip = 130;
+    // Vertical (Win10 left/right docked) taskbar: bottom clearance for the tray region.
     private const double FloatingTrayClearanceDip = 260;
     private static readonly IntPtr HwndTopMost = new(-1);
     private static readonly IntPtr HwndTop = new(0);
@@ -535,17 +538,30 @@ public partial class TaskbarIslandWindow : Window
         else if (taskbarWidth >= taskbarHeight)
         {
             var margin = Math.Max(1, (int)Math.Round(6 * scale));
+            // Two-state coexistence:
+            //   With the Widgets button visible, the island follows its slot (which moves when
+            //     Start toggles left vs centered), so it tracks alignment changes.
+            //   Without any Widgets slot, the island drops to the right edge just left of the
+            //     notification area (reserving >=3 tray buttons) instead of overlapping Start.
+            var notificationReservePx = Math.Max(1, (int)Math.Round(NotificationReserveDip * scale));
+            var notificationLeft = _embedder.GetNotificationAreaLeft(taskbar);
+            var upperBoundX = notificationLeft - notificationReservePx - widthPx;
+            var hasWidgets = _embedder.HasWidgets(taskbar);
+            var desiredX = hasWidgets
+                ? _embedder.GetPreferredFloatingLeft(taskbar, taskbarRect.Left + margin, margin)
+                : upperBoundX;
             x = _coordinator.State.IslandPositionPreset switch
             {
                 IslandPositionPreset.Center =>
                     taskbarRect.Left + Math.Max(0, (taskbarWidth - widthPx) / 2),
-                IslandPositionPreset.Right =>
-                    taskbarRect.Right - widthPx - (int)Math.Round(FloatingTrayClearanceDip * scale),
-                _ => _embedder.GetPreferredFloatingLeft(
-                    taskbar, taskbarRect.Left + margin, margin)
+                _ => Math.Clamp(desiredX, taskbarRect.Left + margin, upperBoundX)
             };
             x = Math.Clamp(x, taskbarRect.Left + margin, taskbarRect.Right - widthPx - margin);
-            y = taskbarRect.Top + Math.Max(0, (taskbarHeight - heightPx) / 2);
+            // The floating island is meant to sit over the taskbar band (its widgets/Start row),
+            // not be vertically re-centered inside a thick Win11 "floating" taskbar. Keeping the
+            // top edge at the taskbar's top avoids the island dropping out of view when a
+            // desktop/taskbar click re-fires ApplyDisplayMode through the WinEvent hook.
+            y = taskbarRect.Top + Math.Max(0, (taskbarHeight - heightPx) * 1 / 4);
         }
         else
         {

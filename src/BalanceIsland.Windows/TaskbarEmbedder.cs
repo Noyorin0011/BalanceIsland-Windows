@@ -37,6 +37,27 @@ public sealed class TaskbarEmbedder
     public bool IsAttached => _window != IntPtr.Zero && IsWindow(_window) &&
                               _taskbar != IntPtr.Zero && GetParent(_window) == _taskbar;
 
+    // True when the Widgets button has a readable slot (with or without its visual toggle).
+    public bool HasWidgets(IntPtr taskbar)
+    {
+        if (taskbar == IntPtr.Zero || !GetWindowRect(taskbar, out var taskbarRect))
+            return false;
+        var geometry = ReadGeometry(taskbar, taskbarRect);
+        return geometry.WidgetsButton.IsValid;
+    }
+
+    // Right edge of the notification / system-tray area, or taskbar right edge as a fallback.
+    public int GetNotificationAreaLeft(IntPtr taskbar)
+    {
+        if (taskbar == IntPtr.Zero || !GetWindowRect(taskbar, out var taskbarRect))
+            return int.MaxValue;
+        var geometry = ReadGeometry(taskbar, taskbarRect);
+        if (geometry.NotificationArea.IsValid)
+            return geometry.NotificationArea.Left;
+        var found = FindNotificationAreaLeft(taskbar, taskbarRect);
+        return found > taskbarRect.Left ? found : taskbarRect.Right;
+    }
+
     public int GetPreferredFloatingLeft(IntPtr taskbar, int fallbackLeft, int gap)
     {
         if (taskbar == IntPtr.Zero || !GetWindowRect(taskbar, out var taskbarRect))
@@ -51,9 +72,13 @@ public sealed class TaskbarEmbedder
             .OfType<TaskbarIslandWindow>()
             .FirstOrDefault()?.ActualWidth ?? 160d;
         var islandWidth = Math.Max(1, (int)Math.Round(islandWidthDip * dpi / 96d));
+        var centered = IsCenteredTaskbar(geometry.StartButton, taskbarRect);
 
         return TaskbarFloatingPlacement.PreferredLeft(
             fallbackLeft,
+            centered,
+            geometry.StartButton.IsValid ? geometry.StartButton.Left : null,
+            geometry.StartButton.IsValid ? geometry.StartButton.Right : null,
             geometry.WidgetsButton.IsValid ? geometry.WidgetsButton.Left : null,
             geometry.WidgetsButton.IsValid ? geometry.WidgetsButton.Right : null,
             islandWidth,
@@ -239,7 +264,13 @@ public sealed class TaskbarEmbedder
                 try
                 {
                     var current = element.Current;
-                    if (current.ProcessId != taskbarProcessId || current.IsOffscreen) continue;
+                    if (current.ProcessId != taskbarProcessId) continue;
+                    var automationId = current.AutomationId;
+                    // The Widgets button keeps a hidden slot in the taskbar's UIA tree even when
+                    // its toggle is off. Do not discard it as off-screen: the island must occupy
+                    // that slot (right edge aligned to it) instead of dropping to the far-left
+                    // Start edge. All other off-screen elements are still skipped.
+                    if (current.IsOffscreen && automationId != "WidgetsButton") continue;
                     var rectangle = current.BoundingRectangle;
                     if (rectangle.IsEmpty || rectangle.Right <= taskbarRect.Left ||
                         rectangle.Left >= taskbarRect.Right || rectangle.Bottom <= taskbarRect.Top ||
@@ -250,7 +281,6 @@ public sealed class TaskbarEmbedder
                         (int)Math.Floor(rectangle.Top),
                         (int)Math.Ceiling(rectangle.Right),
                         (int)Math.Ceiling(rectangle.Bottom));
-                    var automationId = current.AutomationId;
                     if (automationId == "StartButton") start = span;
                     else if (automationId == "WidgetsButton") widgets = span;
                     else if (automationId is "SystemTrayIcon" or "NotifyItemIcon")

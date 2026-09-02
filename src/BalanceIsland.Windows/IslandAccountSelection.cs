@@ -21,14 +21,18 @@ public static class IslandAccountSelection
                 .Where(account => account.IsEnabled && account.ShowInIsland)
                 .Select(account => account.Id)
                 .ToHashSet(StringComparer.Ordinal);
-            return snapshots
+            var items = snapshots
                 .Where(snapshot => visibleIds.Contains(snapshot.CredentialId))
                 .Select(snapshot => IslandDisplayGroups.FromSnapshot(
                     snapshot,
                     visualStates.TryGetValue(snapshot.CredentialId, out var visualState)
                         ? visualState
                         : null))
-                .ToArray();
+                .ToList();
+            if (coordinator.State.CodexPlanShowInIsland &&
+                coordinator.State.CodexPlanUsage is { } defaultPlanUsage)
+                items.Add(IslandDisplayGroups.FromCodexPlanUsage(defaultPlanUsage, DateTimeOffset.Now));
+            return items;
         }
 
         var enabledIds = coordinator.State.Accounts
@@ -45,14 +49,18 @@ public static class IslandAccountSelection
             return [IslandDisplayGroups.Aggregate(activeGroup, enabledSnapshots, visualStates)];
         }
 
-        return activeGroup.AccountIds
+        var groupItems = activeGroup.AccountIds
             .Where(enabledIds.Contains)
             .Where(snapshotsById.ContainsKey)
             .Distinct(StringComparer.Ordinal)
             .Select(id => IslandDisplayGroups.FromSnapshot(
                 snapshotsById[id],
                 visualStates.TryGetValue(id, out var visualState) ? visualState : null))
-            .ToArray();
+            .ToList();
+        if (activeGroup.IncludeCodexPlanUsage &&
+            coordinator.State.CodexPlanUsage is { } groupPlanUsage)
+            groupItems.Add(IslandDisplayGroups.FromCodexPlanUsage(groupPlanUsage, DateTimeOffset.Now));
+        return groupItems;
     }
 
     public static IReadOnlyList<BalanceSnapshot> VisibleSnapshots(BalanceCoordinator coordinator)

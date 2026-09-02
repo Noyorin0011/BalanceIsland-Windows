@@ -8,7 +8,7 @@ internal static class AppStateSemanticValidator
     {
         "provider", "status", "anomalyMode", "credentialSource", "lastBalanceBand", "lastVisualState",
         "mode", "aggregateProvider", "islandDisplayMode", "islandPositionPreset", "islandSizePreset",
-        "themeMode", "islandColorTheme"
+        "themeMode", "islandColorTheme", "lastError"
     };
 
     internal static void ValidateJsonTokens(string json)
@@ -36,6 +36,34 @@ internal static class AppStateSemanticValidator
         ValidateSnapshots(state.Snapshots);
         ValidateDailyUsage(state.DailyUsage);
         ValidateAlerts(state.Alerts);
+        ValidateCodexPlanUsage(state.CodexPlanUsage);
+        ValidateCodexPlanReadState(state.CodexPlanReadState);
+    }
+
+    private static void ValidateCodexPlanUsage(CodexPlanUsage? usage)
+    {
+        if (usage is null) return;
+        if (usage.UpdatedAt == default)
+            throw Invalid("CodexPlanUsage.UpdatedAt 不能是默认时间。");
+        ValidateCodexPlanWindow(usage.Primary, nameof(CodexPlanUsage.Primary));
+        ValidateCodexPlanWindow(usage.Secondary, nameof(CodexPlanUsage.Secondary));
+    }
+
+    private static void ValidateCodexPlanWindow(CodexPlanQuotaWindow? window, string name)
+    {
+        if (window is null) return;
+        if (window.RemainingPercent is < 0 or > 100)
+            throw Invalid($"CodexPlanQuotaWindow.{name}.RemainingPercent 必须在 0..100 范围。");
+        if (window.WindowSeconds is { } windowSeconds && windowSeconds <= 0)
+            throw Invalid($"CodexPlanQuotaWindow.{name}.WindowSeconds 必须是正数。");
+        if (window.ResetAtUnixSeconds is { } resetAt && resetAt <= 0)
+            throw Invalid($"CodexPlanQuotaWindow.{name}.ResetAtUnixSeconds 必须是正数。");
+    }
+
+    private static void ValidateCodexPlanReadState(CodexPlanReadState? readState)
+    {
+        if (readState is null) return;
+        if (readState.LastError is { } error) ValidateDefined(error, nameof(readState.LastError));
     }
 
     private static void ValidateAccounts(IEnumerable<Account>? accounts)

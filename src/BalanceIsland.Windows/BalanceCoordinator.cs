@@ -183,9 +183,10 @@ public sealed class BalanceCoordinator : IDisposable
     public IslandDisplayGroup CreateDisplayGroup(
         string name,
         IslandGroupMode mode,
-        IEnumerable<string> accountIds)
+        IEnumerable<string> accountIds,
+        bool includeCodexPlanUsage = false)
     {
-        var group = IslandDisplayGroups.Create(State, name, mode, accountIds);
+        var group = IslandDisplayGroups.Create(State, name, mode, accountIds, includeCodexPlanUsage);
         SaveAndNotify();
         return group;
     }
@@ -194,9 +195,10 @@ public sealed class BalanceCoordinator : IDisposable
         string groupId,
         string name,
         IslandGroupMode mode,
-        IEnumerable<string> accountIds)
+        IEnumerable<string> accountIds,
+        bool includeCodexPlanUsage = false)
     {
-        var group = IslandDisplayGroups.Update(State, groupId, name, mode, accountIds);
+        var group = IslandDisplayGroups.Update(State, groupId, name, mode, accountIds, includeCodexPlanUsage);
         SaveAndNotify();
         return group;
     }
@@ -222,6 +224,63 @@ public sealed class BalanceCoordinator : IDisposable
         State.NotifyWarning15 = warning15;
         State.NotifyCritical = critical;
         State.NotifyAnomaly = anomaly;
+        SaveAndNotify();
+    }
+
+    public void SetCodexPlanConsent(bool accepted)
+    {
+        if (accepted)
+        {
+            State.CodexPlanConsentVersion = 1;
+        }
+        else
+        {
+            State.CodexPlanConsentVersion = 0;
+            State.CodexPlanEnabled = false;
+            State.CodexPlanAutoRefreshEnabled = false;
+        }
+        SaveAndNotify();
+    }
+
+    public void SetCodexPlanSettings(bool enabled, bool autoRefreshEnabled, bool showInIsland)
+    {
+        State.CodexPlanEnabled = enabled;
+        State.CodexPlanAutoRefreshEnabled = enabled && autoRefreshEnabled;
+        State.CodexPlanShowInIsland = showInIsland;
+        SaveAndNotify();
+    }
+
+    public void MarkCodexPlanAttempt(DateTimeOffset attemptedAt)
+    {
+        State.CodexPlanReadState.LastAttemptAt = attemptedAt;
+        SaveAndNotify();
+    }
+
+    public void SaveCodexPlanUsage(CodexPlanUsage usage)
+    {
+        ArgumentNullException.ThrowIfNull(usage);
+        State.CodexPlanUsage = usage;
+        State.CodexPlanReadState.LastError = null;
+        State.CodexPlanReadState.AutoRefreshPaused = false;
+        State.CodexPlanReadState.LastSuccessfulAt = DateTimeOffset.Now;
+        SaveAndNotify();
+    }
+
+    public void MarkCodexPlanFailure(CodexPlanReadError error)
+    {
+        State.CodexPlanReadState.LastError = error;
+        State.CodexPlanReadState.AutoRefreshPaused = CodexPlanRefreshPolicy.ShouldPause(error);
+        SaveAndNotify();
+    }
+
+    public void ClearCodexPlanData(bool profileCleanupPending)
+    {
+        State.CodexPlanConsentVersion = 0;
+        State.CodexPlanEnabled = false;
+        State.CodexPlanAutoRefreshEnabled = false;
+        State.CodexPlanUsage = null;
+        State.CodexPlanReadState = new CodexPlanReadState();
+        State.CodexPlanProfileCleanupPending = profileCleanupPending;
         SaveAndNotify();
     }
 
