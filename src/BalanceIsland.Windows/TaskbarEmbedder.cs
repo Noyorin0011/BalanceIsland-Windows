@@ -37,6 +37,18 @@ public sealed class TaskbarEmbedder
     public bool IsAttached => _window != IntPtr.Zero && IsWindow(_window) &&
                               _taskbar != IntPtr.Zero && GetParent(_window) == _taskbar;
 
+    // Right edge of the notification / system-tray area, or taskbar right edge as a fallback.
+    public int GetNotificationAreaLeft(IntPtr taskbar)
+    {
+        if (taskbar == IntPtr.Zero || !GetWindowRect(taskbar, out var taskbarRect))
+            return int.MaxValue;
+        var geometry = ReadGeometry(taskbar, taskbarRect);
+        if (geometry.NotificationArea.IsValid)
+            return geometry.NotificationArea.Left;
+        var found = FindNotificationAreaLeft(taskbar, taskbarRect);
+        return found > taskbarRect.Left ? found : taskbarRect.Right;
+    }
+
     public int GetPreferredFloatingLeft(IntPtr taskbar, int fallbackLeft, int gap)
     {
         if (taskbar == IntPtr.Zero || !GetWindowRect(taskbar, out var taskbarRect))

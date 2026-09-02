@@ -41,6 +41,9 @@ public partial class TaskbarIslandWindow : Window
     private const double MinimumHeight = 28;
     private const double MaximumWidth = 480;
     private const double MaximumHeight = 100;
+    // Reserve at least three notification-area buttons (≈40 DIP each) left of the system tray.
+    private const double NotificationReserveDip = 130;
+    // Vertical (Win10 left/right docked) taskbar: bottom clearance for the tray region.
     private const double FloatingTrayClearanceDip = 260;
     private static readonly IntPtr HwndTopMost = new(-1);
     private static readonly IntPtr HwndTop = new(0);
@@ -535,14 +538,20 @@ public partial class TaskbarIslandWindow : Window
         else if (taskbarWidth >= taskbarHeight)
         {
             var margin = Math.Max(1, (int)Math.Round(6 * scale));
+            // Reserve at least three notification-area button widths so the island never sits
+            // under the system tray icons. The notification area is on the right of a bottom
+            // taskbar; anchor the island's right edge just left of it (minus the reserve).
+            var notificationReservePx = Math.Max(1, (int)Math.Round(NotificationReserveDip * scale));
+            var notificationLeft = _embedder.GetNotificationAreaLeft(taskbar);
+            var rightAlignedX = notificationLeft - notificationReservePx - widthPx;
             x = _coordinator.State.IslandPositionPreset switch
             {
                 IslandPositionPreset.Center =>
                     taskbarRect.Left + Math.Max(0, (taskbarWidth - widthPx) / 2),
-                IslandPositionPreset.Right =>
-                    taskbarRect.Right - widthPx - (int)Math.Round(FloatingTrayClearanceDip * scale),
-                _ => _embedder.GetPreferredFloatingLeft(
-                    taskbar, taskbarRect.Left + margin, margin)
+                // The island's right edge anchors just left of the notification area, reserving
+                // at least three tray-button widths, so it never sits under the system tray.
+                IslandPositionPreset.Right => rightAlignedX,
+                _ => rightAlignedX
             };
             x = Math.Clamp(x, taskbarRect.Left + margin, taskbarRect.Right - widthPx - margin);
             // The floating island is meant to sit over the taskbar band (its widgets/Start row),
