@@ -115,6 +115,24 @@ public sealed class TaskbarFloatingPlacementTests
     }
 
     [Fact]
+    public void Legacy_horizontal_placement_stays_left_of_widgets_and_vertically_centered()
+    {
+        var actual = TaskbarFloatingPlacement.PlaceLegacyHorizontal(
+            taskbarLeft: 0,
+            taskbarTop: 1032,
+            taskbarHeight: 48,
+            widgetsLeft: 180,
+            widgetsRight: 228,
+            islandWidth: 160,
+            islandHeight: 38,
+            gap: 6);
+
+        Assert.Equal(14, actual.Left);
+        Assert.Equal(1037, actual.Top);
+        Assert.True(actual.FitsInTaskbarBand);
+    }
+
+    [Fact]
     public void Same_visible_placement_is_reapplied_when_z_order_restack_is_requested()
     {
         var placement = new TaskbarFloatingPlacement.Result(
