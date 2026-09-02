@@ -545,8 +545,12 @@ public partial class TaskbarIslandWindow : Window
         else if (taskbarWidth >= taskbarHeight)
         {
             var margin = Math.Max(1, (int)Math.Round(6 * scale));
-            var automaticPlacement = _embedder.GetFloatingPlacement(
-                taskbar, widthPx, margin);
+            var useWin11TaskbarLayout =
+                OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
+            var automaticPlacement = useWin11TaskbarLayout
+                ? _embedder.GetFloatingPlacement(taskbar, widthPx, margin)
+                : _embedder.GetLegacyFloatingPlacement(
+                    taskbar, widthPx, heightPx, margin);
             x = _coordinator.State.IslandPositionPreset switch
             {
                 IslandPositionPreset.Center =>
@@ -559,10 +563,10 @@ public partial class TaskbarIslandWindow : Window
             placementFitsTaskbarBand =
                 _coordinator.State.IslandPositionPreset != IslandPositionPreset.Left ||
                 automaticPlacement.FitsInTaskbarBand;
-            // Anchor to Explorer's taskbar top instead of recomputing a vertical center from
-            // transient taskbar/overlay heights after a taskbar or desktop click.
+            // Win11 anchors to Explorer's taskbar top instead of recomputing from transient
+            // overlay heights. Win10 retains the previous vertical-center placement.
             y = placementFitsTaskbarBand
-                ? taskbarRect.Top
+                ? automaticPlacement.Top
                 : taskbarRect.Top - heightPx - margin;
         }
         else
