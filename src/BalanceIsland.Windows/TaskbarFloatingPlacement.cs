@@ -52,7 +52,7 @@ public static class TaskbarFloatingPlacement
         var firstRightElement = taskbarRight;
         if (hasWidgets)
             firstRightElement = Math.Min(firstRightElement, widgetsLeft.Value);
-        if (notificationLeft is { } nl && nl > occupiedRight)
+        if (notificationLeft is { } nl && nl > taskbarLeft && nl <= taskbarRight)
             firstRightElement = Math.Min(firstRightElement, nl);
         var maximumLeft = Math.Min(safeRight, firstRightElement - safeGap - safeWidth);
         var fitsLeftAligned = desired >= minimumLeft && desired <= maximumLeft;
