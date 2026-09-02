@@ -37,25 +37,43 @@ public sealed class TaskbarEmbedder
     public bool IsAttached => _window != IntPtr.Zero && IsWindow(_window) &&
                               _taskbar != IntPtr.Zero && GetParent(_window) == _taskbar;
 
-    public int GetPreferredFloatingLeft(IntPtr taskbar, int fallbackLeft, int gap)
+    public TaskbarFloatingPlacement.Result GetFloatingPlacement(
+        IntPtr taskbar,
+        int islandWidth,
+        int gap)
     {
         if (taskbar == IntPtr.Zero || !GetWindowRect(taskbar, out var taskbarRect))
-            return fallbackLeft;
+            return new TaskbarFloatingPlacement.Result(0, 0, false);
 
         // Win11 can rebuild/reposition Start/Widgets immediately after TaskbarAl changes.
-        // Read fresh UIA geometry so alignment changes are not delayed by stale coordinates.
+        // Read one fresh UIA snapshot so all placement decisions describe the same taskbar state.
         var geometry = ReadGeometry(taskbar, taskbarRect);
-        var dpi = GetDpiForWindow(taskbar);
-        if (dpi == 0) dpi = 96;
-        var islandWidthDip = System.Windows.Application.Current?.Windows
-            .OfType<TaskbarIslandWindow>()
-            .FirstOrDefault()?.ActualWidth ?? 160d;
-        var islandWidth = Math.Max(1, (int)Math.Round(islandWidthDip * dpi / 96d));
+        var centered = IsCenteredTaskbar(geometry.StartButton, taskbarRect);
+        var notificationLeft = geometry.NotificationArea.IsValid
+            ? geometry.NotificationArea.Left
+            : FindNotificationAreaLeft(taskbar, taskbarRect);
+        if (notificationLeft <= taskbarRect.Left) notificationLeft = taskbarRect.Right;
 
-        return TaskbarFloatingPlacement.PreferredLeft(
-            fallbackLeft,
+        var taskbarHeight = Math.Max(1, taskbarRect.Bottom - taskbarRect.Top);
+        var fallbackStartRight = taskbarRect.Left + taskbarHeight;
+        var startRight = geometry.StartButton.IsValid
+            ? geometry.StartButton.Right
+            : fallbackStartRight;
+        var taskButtonsRight = geometry.TaskButtons.IsValid
+            ? geometry.TaskButtons.Right
+            : startRight;
+
+        return TaskbarFloatingPlacement.PlaceHorizontal(
+            taskbarRect.Left,
+            taskbarRect.Top,
+            taskbarRect.Right,
+            centered,
+            geometry.StartButton.IsValid ? geometry.StartButton.Left : null,
+            startRight,
             geometry.WidgetsButton.IsValid ? geometry.WidgetsButton.Left : null,
             geometry.WidgetsButton.IsValid ? geometry.WidgetsButton.Right : null,
+            taskButtonsRight,
+            notificationLeft,
             islandWidth,
             gap);
     }
