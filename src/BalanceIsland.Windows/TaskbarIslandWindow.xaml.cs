@@ -32,6 +32,7 @@ public partial class TaskbarIslandWindow : Window
     private const uint WineventOutOfContext = 0x0000;
     private const uint WineventSkipOwnProcess = 0x0002;
     private const uint MonitorDefaultToNearest = 2;
+    private const uint GwHwndNext = 2;
     private const uint SwpNoSize = 0x0001;
     private const uint SwpNoMove = 0x0002;
     private const uint SwpNoZOrder = 0x0004;
@@ -89,7 +90,8 @@ public partial class TaskbarIslandWindow : Window
         _carouselTimer.Start();
 
         _layoutTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
-        _layoutTimer.Tick += (_, _) => ApplyDisplayMode(forceRestack: true);
+        _layoutTimer.Tick += (_, _) =>
+            ApplyDisplayMode(forceRestack: NeedsTaskbarRestack());
         _layoutTimer.Start();
 
         _eventSettleTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(80) };
@@ -687,6 +689,32 @@ public partial class TaskbarIslandWindow : Window
         return GetClassName(hwnd, sb, sb.Capacity) > 0 ? sb.ToString() : string.Empty;
     }
 
+    private bool NeedsTaskbarRestack() =>
+        _lastFloatingPlacement is { Topmost: true } && !IsIslandAboveTaskbar();
+
+    private bool IsIslandAboveTaskbar()
+    {
+        var island = new WindowInteropHelper(this).Handle;
+        var taskbar = FindWindow("Shell_TrayWnd", null);
+        if (island == IntPtr.Zero || taskbar == IntPtr.Zero) return false;
+
+        var current = GetTopWindow(IntPtr.Zero);
+        for (var visited = 0; current != IntPtr.Zero && visited < 4096; visited++)
+        {
+            if (current == island) return true;
+            if (current == taskbar) return false;
+            current = GetWindow(current, GwHwndNext);
+        }
+        return false;
+    }
+
+    private static bool IsTopLevelReorderContainer(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero || hwnd == GetDesktopWindow()) return true;
+        var className = GetWindowClass(hwnd);
+        return className is "Progman" or "WorkerW";
+    }
+
     private void OnWinEvent(
         IntPtr hook,
         uint eventType,
@@ -705,18 +733,23 @@ public partial class TaskbarIslandWindow : Window
         }
         else if (eventType == EventObjectReorder)
         {
-            var taskbar = FindWindow("Shell_TrayWnd", null);
-            if (window != taskbar) return;
+            if (!IsTopLevelReorderContainer(window)) return;
         }
 
         Dispatcher.BeginInvoke(new Action(() =>
         {
             try
             {
-                // Taskbar clicks do not reliably change the foreground HWND to Shell_TrayWnd.
-                // Every filtered shell/foreground event therefore explicitly requests a native
-                // Z-order reapply even when the cached rectangle is unchanged.
-                ApplyDisplayMode(forceRestack: true);
+                var forceRestack = eventType != EventObjectReorder ||
+                    TaskbarFloatingPlacement.ShouldRestackForReorder(
+                        isTopLevelContainer: true,
+                        islandIsAboveTaskbar: IsIslandAboveTaskbar());
+                if (eventType == EventObjectReorder && !forceRestack) return;
+
+                // Taskbar clicks do not reliably change the foreground HWND. Foreground and
+                // location events restack directly; top-level reorder events first verify that
+                // Explorer actually moved the taskbar above the island.
+                ApplyDisplayMode(forceRestack);
                 _eventSettleTimer.Stop();
                 _eventSettleTimer.Start();
             }
@@ -811,6 +844,12 @@ public partial class TaskbarIslandWindow : Window
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetDesktopWindow();
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetTopWindow(IntPtr parent);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetWindow(IntPtr window, uint command);
 
     [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
