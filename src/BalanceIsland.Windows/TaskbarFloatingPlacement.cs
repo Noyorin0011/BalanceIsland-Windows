@@ -37,15 +37,19 @@ public static class TaskbarFloatingPlacement
             return new Result(Math.Clamp(desiredLeft, safeLeft, safeRight), taskbarTop, fits);
         }
 
-        // Left-aligned Start: move beyond the entire contiguous Start/task-button group, then
-        // require the island to end before both visible Widgets and the notification area.
+        // Left-aligned Start: keep clear of the contiguous Start/task-button group. When
+        // Widgets is visible on the right, align the island's right edge to its left edge;
+        // otherwise retain the first safe slot after the task buttons.
         var occupiedRight = taskbarLeft;
         if (hasStart) occupiedRight = Math.Max(occupiedRight, startRight!.Value);
         if (taskButtonsRight is { } tbr && tbr > taskbarLeft)
             occupiedRight = Math.Max(occupiedRight, tbr);
         if (hasWidgets && widgetsLeft!.Value <= occupiedRight && widgetsRight!.Value > occupiedRight)
             occupiedRight = widgetsRight.Value;
-        var desired = Math.Max(safeLeft, occupiedRight + safeGap);
+        var minimumLeft = Math.Max(safeLeft, occupiedRight + safeGap);
+        var desired = hasWidgets && widgetsLeft!.Value > occupiedRight
+            ? widgetsLeft.Value - safeGap - safeWidth
+            : minimumLeft;
 
         var firstRightElement = taskbarRight;
         if (hasWidgets && widgetsLeft!.Value > occupiedRight)
@@ -53,7 +57,7 @@ public static class TaskbarFloatingPlacement
         if (notificationLeft is { } nl && nl > occupiedRight)
             firstRightElement = Math.Min(firstRightElement, nl);
         var maximumLeft = Math.Min(safeRight, firstRightElement - safeGap - safeWidth);
-        var fitsLeftAligned = desired <= maximumLeft;
+        var fitsLeftAligned = desired >= minimumLeft && desired <= maximumLeft;
         return new Result(Math.Clamp(desired, safeLeft, safeRight), taskbarTop, fitsLeftAligned);
     }
 
