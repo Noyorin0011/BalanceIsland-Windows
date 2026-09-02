@@ -26,6 +26,7 @@ public partial class TaskbarIslandWindow : Window
     private const uint EventSystemForeground = 0x0003;
     private const uint EventSystemMinimizeStart = 0x0016;
     private const uint EventSystemMinimizeEnd = 0x0017;
+    private const uint EventObjectReorder = 0x8004;
     private const uint EventObjectLocationChange = 0x800B;
     private const int ObjidWindow = 0;
     private const uint WineventOutOfContext = 0x0000;
@@ -43,7 +44,6 @@ public partial class TaskbarIslandWindow : Window
     private const double MaximumHeight = 100;
     private const double FloatingTrayClearanceDip = 260;
     private static readonly IntPtr HwndTopMost = new(-1);
-    private static readonly IntPtr HwndTop = new(0);
     private static readonly IntPtr HwndBottom = new(1);
 
     private readonly BalanceCoordinator _coordinator;
@@ -59,6 +59,7 @@ public partial class TaskbarIslandWindow : Window
     private FloatingPlacement? _lastFloatingPlacement;
     private IntPtr _foregroundHook;
     private IntPtr _minimizeHook;
+    private IntPtr _reorderHook;
     private IntPtr _locationHook;
     private bool _editingGesture;
     private int _index;
@@ -88,14 +89,14 @@ public partial class TaskbarIslandWindow : Window
         _carouselTimer.Start();
 
         _layoutTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
-        _layoutTimer.Tick += (_, _) => ApplyDisplayMode();
+        _layoutTimer.Tick += (_, _) => ApplyDisplayMode(forceRestack: true);
         _layoutTimer.Start();
 
         _eventSettleTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(80) };
         _eventSettleTimer.Tick += (_, _) =>
         {
             _eventSettleTimer.Stop();
-            ApplyDisplayMode();
+            ApplyDisplayMode(forceRestack: true);
         };
 
         _winEventDelegate = OnWinEvent;
@@ -133,6 +134,9 @@ public partial class TaskbarIslandWindow : Window
         _minimizeHook = SetWinEventHook(
             EventSystemMinimizeStart, EventSystemMinimizeEnd, IntPtr.Zero,
             _winEventDelegate, 0, 0, WineventOutOfContext | WineventSkipOwnProcess);
+        _reorderHook = SetWinEventHook(
+            EventObjectReorder, EventObjectReorder, IntPtr.Zero,
+            _winEventDelegate, 0, 0, WineventOutOfContext | WineventSkipOwnProcess);
         _locationHook = SetWinEventHook(
             EventObjectLocationChange, EventObjectLocationChange, IntPtr.Zero,
             _winEventDelegate, 0, 0, WineventOutOfContext | WineventSkipOwnProcess);
@@ -146,6 +150,7 @@ public partial class TaskbarIslandWindow : Window
         _eventSettleTimer.Stop();
         if (_foregroundHook != IntPtr.Zero) UnhookWinEvent(_foregroundHook);
         if (_minimizeHook != IntPtr.Zero) UnhookWinEvent(_minimizeHook);
+        if (_reorderHook != IntPtr.Zero) UnhookWinEvent(_reorderHook);
         if (_locationHook != IntPtr.Zero) UnhookWinEvent(_locationHook);
         _embedder.Detach();
         base.OnClosed(e);
@@ -405,7 +410,7 @@ public partial class TaskbarIslandWindow : Window
         _ => palette.Normal
     };
 
-    private void ApplyDisplayMode()
+    private void ApplyDisplayMode(bool forceRestack = false)
     {
         if (!IsLoaded || !IsVisible) return;
         var handle = new WindowInteropHelper(this).Handle;
@@ -441,15 +446,15 @@ public partial class TaskbarIslandWindow : Window
             _embedder.Detach();
             ApplyInteractionStyle(handle, edit: true);
             ShowActivated = true;
-            Topmost = true;
-            PositionFloatingOverTaskbar(forceTopmost: true);
+            PositionFloatingOverTaskbar(
+                forceTopmost: true,
+                forceRestack: forceRestack);
             ReportModeStatus("编辑模式：拖动浮岛或拖拽边缘缩放；关闭后固定并穿透点击");
             return;
         }
 
         ShowActivated = false;
         ResizeMode = ResizeMode.NoResize;
-        Topmost = false;
         if (_displayMode == IslandDisplayMode.TaskbarEmbedded &&
             !OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
         {
@@ -461,14 +466,18 @@ public partial class TaskbarIslandWindow : Window
             }
             _embedder.Detach();
             ApplyInteractionStyle(handle, edit: false);
-            PositionFloatingOverTaskbar(forceTopmost: false);
+            PositionFloatingOverTaskbar(
+                forceTopmost: false,
+                forceRestack: forceRestack);
             ReportModeStatus(result.Message);
             return;
         }
 
         _embedder.Detach();
         ApplyInteractionStyle(handle, edit: false);
-        PositionFloatingOverTaskbar(forceTopmost: false);
+        PositionFloatingOverTaskbar(
+            forceTopmost: false,
+            forceRestack: forceRestack);
         ReportModeStatus("透明悬浮；全屏时隐藏，锁定后鼠标穿透");
     }
 
@@ -492,7 +501,7 @@ public partial class TaskbarIslandWindow : Window
             SwpNoSize | SwpNoMove | SwpNoZOrder | SwpNoActivate | SwpFrameChanged);
     }
 
-    private void PositionFloatingOverTaskbar(bool forceTopmost)
+    private void PositionFloatingOverTaskbar(bool forceTopmost, bool forceRestack = false)
     {
         var handle = new WindowInteropHelper(this).Handle;
         var size = CurrentSizeDip();
@@ -525,6 +534,7 @@ public partial class TaskbarIslandWindow : Window
         var taskbarHeight = taskbarRect.Bottom - taskbarRect.Top;
         int x;
         int y;
+        var placementFitsTaskbarBand = true;
 
         if (_coordinator.State.IslandPositionPreset == IslandPositionPreset.Custom)
         {
@@ -535,17 +545,25 @@ public partial class TaskbarIslandWindow : Window
         else if (taskbarWidth >= taskbarHeight)
         {
             var margin = Math.Max(1, (int)Math.Round(6 * scale));
+            var automaticPlacement = _embedder.GetFloatingPlacement(
+                taskbar, widthPx, margin);
             x = _coordinator.State.IslandPositionPreset switch
             {
                 IslandPositionPreset.Center =>
                     taskbarRect.Left + Math.Max(0, (taskbarWidth - widthPx) / 2),
                 IslandPositionPreset.Right =>
                     taskbarRect.Right - widthPx - (int)Math.Round(FloatingTrayClearanceDip * scale),
-                _ => _embedder.GetPreferredFloatingLeft(
-                    taskbar, taskbarRect.Left + margin, margin)
+                _ => automaticPlacement.Left
             };
             x = Math.Clamp(x, taskbarRect.Left + margin, taskbarRect.Right - widthPx - margin);
-            y = taskbarRect.Top + Math.Max(0, (taskbarHeight - heightPx) / 2);
+            placementFitsTaskbarBand =
+                _coordinator.State.IslandPositionPreset != IslandPositionPreset.Left ||
+                automaticPlacement.FitsInTaskbarBand;
+            // Anchor to Explorer's taskbar top instead of recomputing a vertical center from
+            // transient taskbar/overlay heights after a taskbar or desktop click.
+            y = placementFitsTaskbarBand
+                ? taskbarRect.Top
+                : taskbarRect.Top - heightPx - margin;
         }
         else
         {
@@ -573,18 +591,22 @@ public partial class TaskbarIslandWindow : Window
         // the taskbar band it must stay topmost and be inserted BEFORE the taskbar in the
         // Z-order. The taskbar (Shell_TrayWnd) is itself topmost and can be re-stacked above the
         // island after a desktop/taskbar click, hiding it underneath.
-        var useTopmost = forceTopmost || IsOverTaskbar(target, taskbarRect);
+        var useTopmost = forceTopmost ||
+                         IsOverTaskbar(target, taskbarRect) ||
+                         !placementFitsTaskbarBand;
         var placement = new FloatingPlacement(x, y, widthPx, heightPx, useTopmost);
-        if (_lastFloatingPlacement == placement && IsWindowVisible(handle)) return;
+        if (!TaskbarFloatingPlacement.ShouldApply(
+                _lastFloatingPlacement,
+                placement,
+                IsWindowVisible(handle),
+                forceRestack)) return;
 
         if (useTopmost)
         {
-            // Make the island topmost, then put it at the absolute top of the Z-order (HWND_TOP)
-            // so it renders above the taskbar (Shell_TrayWnd), which is itself topmost and would
-            // otherwise be stacked over the island after a desktop/taskbar click.
-            SetWindowPos(handle, HwndTopMost, 0, 0, 0, 0,
-                SwpNoMove | SwpNoSize | SwpNoActivate);
-            SetWindowPos(handle, HwndTop, x, y, widthPx, heightPx, SwpNoActivate | SwpShowWindow);
+            // One native operation both restores the topmost band and reapplies geometry. A
+            // second HWND_TOP call is unnecessary and can race Explorer's own taskbar restack.
+            SetWindowPos(handle, HwndTopMost, x, y, widthPx, heightPx,
+                SwpNoActivate | SwpShowWindow);
         }
         else
         {
@@ -677,18 +699,20 @@ public partial class TaskbarIslandWindow : Window
             var taskbar = FindWindow("Shell_TrayWnd", null);
             if (window != foreground && window != taskbar) return;
         }
+        else if (eventType == EventObjectReorder)
+        {
+            var taskbar = FindWindow("Shell_TrayWnd", null);
+            if (window != taskbar) return;
+        }
 
         Dispatcher.BeginInvoke(new Action(() =>
         {
             try
             {
-                // When focus moves to a shell / desktop / taskbar window (e.g. clicking the
-                // desktop or the taskbar), the taskbar can be re-stacked above the island.
-                // Invalidate the cached placement so ApplyDisplayMode re-inserts the island
-                // BEFORE the taskbar in the Z-order, keeping it visible floating on top.
-                if (IsShellWindow(GetForegroundWindow()))
-                    _lastFloatingPlacement = null;
-                ApplyDisplayMode();
+                // Taskbar clicks do not reliably change the foreground HWND to Shell_TrayWnd.
+                // Every filtered shell/foreground event therefore explicitly requests a native
+                // Z-order reapply even when the cached rectangle is unchanged.
+                ApplyDisplayMode(forceRestack: true);
                 _eventSettleTimer.Stop();
                 _eventSettleTimer.Start();
             }
@@ -711,7 +735,7 @@ public partial class TaskbarIslandWindow : Window
     {
         if (_taskbarCreatedMessage != 0 && message == _taskbarCreatedMessage)
         {
-            Dispatcher.BeginInvoke(ApplyDisplayMode);
+            Dispatcher.BeginInvoke(new Action(() => ApplyDisplayMode(forceRestack: true)));
             return IntPtr.Zero;
         }
         if (message == WmMouseActivate && !_coordinator.State.IslandEditMode)
