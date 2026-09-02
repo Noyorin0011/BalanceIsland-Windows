@@ -115,6 +115,53 @@ public sealed class TaskbarFloatingPlacementTests
         Assert.False(actual.FitsInTaskbarBand);
     }
 
+    [Theory]
+    [InlineData(1200)]
+    [InlineData(1000)]
+    public void Left_aligned_with_widgets_reports_no_fit_when_notification_reaches_task_buttons(
+        int notificationLeft)
+    {
+        var actual = TaskbarFloatingPlacement.PlaceHorizontal(
+            taskbarLeft: 0,
+            taskbarTop: 1032,
+            taskbarRight: 1920,
+            centered: false,
+            startLeft: 0,
+            startRight: 48,
+            widgetsLeft: 1500,
+            widgetsRight: 1548,
+            taskButtonsRight: 1200,
+            notificationLeft: notificationLeft,
+            islandWidth: 225,
+            gap: 6);
+
+        Assert.Equal(1269, actual.Left);
+        Assert.Equal(1032, actual.Top);
+        Assert.False(actual.FitsInTaskbarBand);
+    }
+
+    [Fact]
+    public void Blocked_widgets_target_is_clamped_on_screen_while_reporting_no_fit()
+    {
+        var actual = TaskbarFloatingPlacement.PlaceHorizontal(
+            taskbarLeft: 0,
+            taskbarTop: 1032,
+            taskbarRight: 300,
+            centered: false,
+            startLeft: 0,
+            startRight: 48,
+            widgetsLeft: 150,
+            widgetsRight: 198,
+            taskButtonsRight: 60,
+            notificationLeft: 280,
+            islandWidth: 225,
+            gap: 6);
+
+        Assert.Equal(6, actual.Left);
+        Assert.Equal(1032, actual.Top);
+        Assert.False(actual.FitsInTaskbarBand);
+    }
+
     [Fact]
     public void Left_aligned_without_widgets_stays_between_task_buttons_and_notification_area()
     {
