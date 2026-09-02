@@ -163,7 +163,7 @@ public sealed class TaskbarFloatingPlacementTests
     }
 
     [Fact]
-    public void Left_aligned_without_widgets_stays_between_task_buttons_and_notification_area()
+    public void Left_aligned_without_widgets_aligns_right_edge_to_notification_area()
     {
         var actual = TaskbarFloatingPlacement.PlaceHorizontal(
             taskbarLeft: 0,
@@ -179,10 +179,32 @@ public sealed class TaskbarFloatingPlacementTests
             islandWidth: 225,
             gap: 6);
 
-        Assert.Equal(366, actual.Left);
+        Assert.Equal(1369, actual.Left);
         Assert.Equal(1032, actual.Top);
         Assert.True(actual.FitsInTaskbarBand);
-        Assert.True(actual.Left + 225 < 1600);
+        Assert.Equal(1600 - 6, actual.Left + 225);
+    }
+
+    [Fact]
+    public void Left_aligned_without_widgets_uses_taskbar_right_when_notification_is_missing()
+    {
+        var actual = TaskbarFloatingPlacement.PlaceHorizontal(
+            taskbarLeft: 0,
+            taskbarTop: 1032,
+            taskbarRight: 1920,
+            centered: false,
+            startLeft: 0,
+            startRight: 48,
+            widgetsLeft: null,
+            widgetsRight: null,
+            taskButtonsRight: 360,
+            notificationLeft: null,
+            islandWidth: 225,
+            gap: 6);
+
+        Assert.Equal(1689, actual.Left);
+        Assert.Equal(1032, actual.Top);
+        Assert.True(actual.FitsInTaskbarBand);
     }
 
     [Fact]
