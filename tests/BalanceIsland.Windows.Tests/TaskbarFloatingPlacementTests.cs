@@ -49,7 +49,7 @@ public sealed class TaskbarFloatingPlacementTests
     }
 
     [Fact]
-    public void Left_aligned_with_widgets_uses_free_space_after_task_buttons()
+    public void Left_aligned_with_widgets_aligns_right_edge_to_widgets_left()
     {
         var actual = TaskbarFloatingPlacement.PlaceHorizontal(
             taskbarLeft: 0,
@@ -65,10 +65,10 @@ public sealed class TaskbarFloatingPlacementTests
             islandWidth: 225,
             gap: 6);
 
-        Assert.Equal(366, actual.Left);
+        Assert.Equal(1269, actual.Left);
         Assert.Equal(1032, actual.Top);
         Assert.True(actual.FitsInTaskbarBand);
-        Assert.True(actual.Left + 225 < 1500);
+        Assert.Equal(1500 - 6, actual.Left + 225);
     }
 
     [Fact]
