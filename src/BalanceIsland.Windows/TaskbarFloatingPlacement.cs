@@ -24,6 +24,8 @@ public static class TaskbarFloatingPlacement
         var safeRight = Math.Max(safeLeft, taskbarRight - safeGap - safeWidth);
         var hasStart = startLeft is { } sl && startRight is { } sr && sr > sl;
         var hasWidgets = widgetsLeft is { } wl && widgetsRight is { } wr && wr > wl;
+        var hasNotification = notificationLeft is { } nl &&
+                              nl > taskbarLeft && nl <= taskbarRight;
 
         if (centered)
         {
@@ -37,9 +39,9 @@ public static class TaskbarFloatingPlacement
             return new Result(Math.Clamp(desiredLeft, safeLeft, safeRight), taskbarTop, fits);
         }
 
-        // Left-aligned Start: keep clear of the contiguous Start/task-button group. When
-        // Widgets is visible on the right, align the island's right edge to its left edge;
-        // otherwise retain the first safe slot after the task buttons.
+        // Left-aligned Start: keep clear of the contiguous Start/task-button group and align
+        // the island's right edge to Widgets, or to the notification/taskbar edge when Widgets
+        // is hidden.
         var occupiedRight = taskbarLeft;
         if (hasStart) occupiedRight = Math.Max(occupiedRight, startRight!.Value);
         if (taskButtonsRight is { } tbr && tbr > taskbarLeft)
@@ -47,13 +49,15 @@ public static class TaskbarFloatingPlacement
         var minimumLeft = Math.Max(safeLeft, occupiedRight + safeGap);
         var desired = hasWidgets
             ? widgetsLeft.Value - safeGap - safeWidth
-            : minimumLeft;
+            : hasNotification
+                ? notificationLeft!.Value - safeGap - safeWidth
+                : safeRight;
 
         var firstRightElement = taskbarRight;
         if (hasWidgets)
             firstRightElement = Math.Min(firstRightElement, widgetsLeft.Value);
-        if (notificationLeft is { } nl && nl > taskbarLeft && nl <= taskbarRight)
-            firstRightElement = Math.Min(firstRightElement, nl);
+        if (hasNotification)
+            firstRightElement = Math.Min(firstRightElement, notificationLeft!.Value);
         var maximumLeft = Math.Min(safeRight, firstRightElement - safeGap - safeWidth);
         var fitsLeftAligned = desired >= minimumLeft && desired <= maximumLeft;
         return new Result(Math.Clamp(desired, safeLeft, safeRight), taskbarTop, fitsLeftAligned);
