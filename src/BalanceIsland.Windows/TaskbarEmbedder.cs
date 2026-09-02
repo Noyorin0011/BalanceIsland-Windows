@@ -265,6 +265,7 @@ public sealed class TaskbarEmbedder
             taskbarRect.Left,
             taskbarRect.Right,
             startButton.IsValid ? startButton.Left : null,
+            startButton.IsValid ? startButton.Right : null,
             registryCentered);
     }
 
