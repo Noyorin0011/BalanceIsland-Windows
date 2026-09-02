@@ -250,15 +250,22 @@ public sealed class TaskbarEmbedder
     private static bool IsCenteredTaskbar(Span startButton, NativeRect taskbarRect)
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000)) return false;
+        var registryCentered = false;
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(TaskbarAlignmentKey);
-            if (key?.GetValue("TaskbarAl") is int value) return value != 0;
+            if (key?.GetValue("TaskbarAl") is int value)
+                registryCentered = value != 0;
         }
         catch { }
 
-        return startButton.IsValid && startButton.Left > taskbarRect.Left +
-            (taskbarRect.Right - taskbarRect.Left) / 4;
+        // The UIA snapshot describes the layout Explorer is actually presenting. The registry
+        // can change before Explorer finishes rebuilding, so use it only when Start is missing.
+        return TaskbarFloatingPlacement.IsCenteredFromSnapshot(
+            taskbarRect.Left,
+            taskbarRect.Right,
+            startButton.IsValid ? startButton.Left : null,
+            registryCentered);
     }
 
     private static TaskbarGeometry ReadGeometry(IntPtr taskbar, NativeRect taskbarRect)
@@ -267,7 +274,20 @@ public sealed class TaskbarEmbedder
         {
             GetWindowThreadProcessId(taskbar, out var taskbarProcessId);
             var root = AutomationElement.FromHandle(taskbar);
-            var elements = root.FindAll(TreeScope.Descendants, Condition.TrueCondition);
+            var cacheRequest = new CacheRequest
+            {
+                TreeScope = TreeScope.Element
+            };
+            cacheRequest.Add(AutomationElement.ProcessIdProperty);
+            cacheRequest.Add(AutomationElement.IsOffscreenProperty);
+            cacheRequest.Add(AutomationElement.BoundingRectangleProperty);
+            cacheRequest.Add(AutomationElement.AutomationIdProperty);
+            cacheRequest.Add(AutomationElement.ControlTypeProperty);
+            AutomationElementCollection elements;
+            using (cacheRequest.Activate())
+            {
+                elements = root.FindAll(TreeScope.Descendants, Condition.TrueCondition);
+            }
             var start = Span.Invalid;
             var widgets = Span.Invalid;
             var notification = Span.Invalid;
@@ -277,7 +297,7 @@ public sealed class TaskbarEmbedder
             {
                 try
                 {
-                    var current = element.Current;
+                    var current = element.Cached;
                     if (current.ProcessId != taskbarProcessId || current.IsOffscreen) continue;
                     var rectangle = current.BoundingRectangle;
                     if (rectangle.IsEmpty || rectangle.Right <= taskbarRect.Left ||
