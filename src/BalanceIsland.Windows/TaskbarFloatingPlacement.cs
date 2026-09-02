@@ -79,6 +79,22 @@ public static class TaskbarFloatingPlacement
         return new Result(left, top, true);
     }
 
+    public static bool IsCenteredFromSnapshot(
+        int taskbarLeft,
+        int taskbarRight,
+        int? startLeft,
+        bool registryCentered)
+    {
+        return startLeft is { } left
+            ? left > taskbarLeft + (taskbarRight - taskbarLeft) / 4
+            : registryCentered;
+    }
+
+    public static bool ShouldRestackForReorder(
+        bool isTopLevelContainer,
+        bool islandIsAboveTaskbar) =>
+        isTopLevelContainer && !islandIsAboveTaskbar;
+
     public static bool ShouldApply<T>(
         T? previous,
         T current,
