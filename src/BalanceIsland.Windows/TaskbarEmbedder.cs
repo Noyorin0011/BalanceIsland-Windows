@@ -78,6 +78,27 @@ public sealed class TaskbarEmbedder
             gap);
     }
 
+    public TaskbarFloatingPlacement.Result GetLegacyFloatingPlacement(
+        IntPtr taskbar,
+        int islandWidth,
+        int islandHeight,
+        int gap)
+    {
+        if (taskbar == IntPtr.Zero || !GetWindowRect(taskbar, out var taskbarRect))
+            return new TaskbarFloatingPlacement.Result(0, 0, false);
+
+        var geometry = ReadGeometry(taskbar, taskbarRect);
+        return TaskbarFloatingPlacement.PlaceLegacyHorizontal(
+            taskbarRect.Left,
+            taskbarRect.Top,
+            taskbarRect.Bottom - taskbarRect.Top,
+            geometry.WidgetsButton.IsValid ? geometry.WidgetsButton.Left : null,
+            geometry.WidgetsButton.IsValid ? geometry.WidgetsButton.Right : null,
+            islandWidth,
+            islandHeight,
+            gap);
+    }
+
     public TaskbarAttachResult AttachOrUpdate(IntPtr window, double desiredWidthDip, double desiredHeightDip)
     {
         if (window == IntPtr.Zero || !IsWindow(window))
