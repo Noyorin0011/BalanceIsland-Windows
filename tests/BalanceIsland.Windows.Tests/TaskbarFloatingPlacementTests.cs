@@ -132,6 +132,38 @@ public sealed class TaskbarFloatingPlacementTests
         Assert.True(actual.FitsInTaskbarBand);
     }
 
+    [Theory]
+    [InlineData(760, false, true)]
+    [InlineData(0, true, false)]
+    [InlineData(null, true, true)]
+    public void Alignment_uses_snapshot_start_position_before_registry_fallback(
+        int? startLeft,
+        bool registryCentered,
+        bool expected)
+    {
+        var actual = TaskbarFloatingPlacement.IsCenteredFromSnapshot(
+            taskbarLeft: 0,
+            taskbarRight: 1920,
+            startLeft: startLeft,
+            registryCentered: registryCentered);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Theory]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, false)]
+    [InlineData(false, false, false)]
+    public void Reorder_restack_requires_top_level_container_and_wrong_z_order(
+        bool isTopLevelContainer,
+        bool islandIsAboveTaskbar,
+        bool expected)
+    {
+        Assert.Equal(expected, TaskbarFloatingPlacement.ShouldRestackForReorder(
+            isTopLevelContainer: isTopLevelContainer,
+            islandIsAboveTaskbar: islandIsAboveTaskbar));
+    }
+
     [Fact]
     public void Same_visible_placement_is_reapplied_when_z_order_restack_is_requested()
     {
