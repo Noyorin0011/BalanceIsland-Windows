@@ -37,26 +37,65 @@ public sealed class TaskbarEmbedder
     public bool IsAttached => _window != IntPtr.Zero && IsWindow(_window) &&
                               _taskbar != IntPtr.Zero && GetParent(_window) == _taskbar;
 
-    public int GetPreferredFloatingLeft(IntPtr taskbar, int fallbackLeft, int gap)
+    public TaskbarFloatingPlacement.Result GetFloatingPlacement(
+        IntPtr taskbar,
+        int islandWidth,
+        int gap)
     {
         if (taskbar == IntPtr.Zero || !GetWindowRect(taskbar, out var taskbarRect))
-            return fallbackLeft;
+            return new TaskbarFloatingPlacement.Result(0, 0, false);
 
         // Win11 can rebuild/reposition Start/Widgets immediately after TaskbarAl changes.
-        // Read fresh UIA geometry so alignment changes are not delayed by stale coordinates.
+        // Read one fresh UIA snapshot so all placement decisions describe the same taskbar state.
         var geometry = ReadGeometry(taskbar, taskbarRect);
-        var dpi = GetDpiForWindow(taskbar);
-        if (dpi == 0) dpi = 96;
-        var islandWidthDip = System.Windows.Application.Current?.Windows
-            .OfType<TaskbarIslandWindow>()
-            .FirstOrDefault()?.ActualWidth ?? 160d;
-        var islandWidth = Math.Max(1, (int)Math.Round(islandWidthDip * dpi / 96d));
+        var centered = IsCenteredTaskbar(geometry.StartButton, taskbarRect);
+        var notificationLeft = geometry.NotificationArea.IsValid
+            ? geometry.NotificationArea.Left
+            : FindNotificationAreaLeft(taskbar, taskbarRect);
+        if (notificationLeft <= taskbarRect.Left) notificationLeft = taskbarRect.Right;
 
-        return TaskbarFloatingPlacement.PreferredLeft(
-            fallbackLeft,
+        var taskbarHeight = Math.Max(1, taskbarRect.Bottom - taskbarRect.Top);
+        var fallbackStartRight = taskbarRect.Left + taskbarHeight;
+        var startRight = geometry.StartButton.IsValid
+            ? geometry.StartButton.Right
+            : fallbackStartRight;
+        var taskButtonsRight = geometry.TaskButtons.IsValid
+            ? geometry.TaskButtons.Right
+            : startRight;
+
+        return TaskbarFloatingPlacement.PlaceHorizontal(
+            taskbarRect.Left,
+            taskbarRect.Top,
+            taskbarRect.Right,
+            centered,
+            geometry.StartButton.IsValid ? geometry.StartButton.Left : null,
+            startRight,
+            geometry.WidgetsButton.IsValid ? geometry.WidgetsButton.Left : null,
+            geometry.WidgetsButton.IsValid ? geometry.WidgetsButton.Right : null,
+            taskButtonsRight,
+            notificationLeft,
+            islandWidth,
+            gap);
+    }
+
+    public TaskbarFloatingPlacement.Result GetLegacyFloatingPlacement(
+        IntPtr taskbar,
+        int islandWidth,
+        int islandHeight,
+        int gap)
+    {
+        if (taskbar == IntPtr.Zero || !GetWindowRect(taskbar, out var taskbarRect))
+            return new TaskbarFloatingPlacement.Result(0, 0, false);
+
+        var geometry = ReadGeometry(taskbar, taskbarRect);
+        return TaskbarFloatingPlacement.PlaceLegacyHorizontal(
+            taskbarRect.Left,
+            taskbarRect.Top,
+            taskbarRect.Bottom - taskbarRect.Top,
             geometry.WidgetsButton.IsValid ? geometry.WidgetsButton.Left : null,
             geometry.WidgetsButton.IsValid ? geometry.WidgetsButton.Right : null,
             islandWidth,
+            islandHeight,
             gap);
     }
 
@@ -211,15 +250,23 @@ public sealed class TaskbarEmbedder
     private static bool IsCenteredTaskbar(Span startButton, NativeRect taskbarRect)
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000)) return false;
+        var registryCentered = false;
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(TaskbarAlignmentKey);
-            if (key?.GetValue("TaskbarAl") is int value) return value != 0;
+            if (key?.GetValue("TaskbarAl") is int value)
+                registryCentered = value != 0;
         }
         catch { }
 
-        return startButton.IsValid && startButton.Left > taskbarRect.Left +
-            (taskbarRect.Right - taskbarRect.Left) / 4;
+        // The UIA snapshot describes the layout Explorer is actually presenting. The registry
+        // can change before Explorer finishes rebuilding, so use it only when Start is missing.
+        return TaskbarFloatingPlacement.IsCenteredFromSnapshot(
+            taskbarRect.Left,
+            taskbarRect.Right,
+            startButton.IsValid ? startButton.Left : null,
+            startButton.IsValid ? startButton.Right : null,
+            registryCentered);
     }
 
     private static TaskbarGeometry ReadGeometry(IntPtr taskbar, NativeRect taskbarRect)
@@ -228,7 +275,20 @@ public sealed class TaskbarEmbedder
         {
             GetWindowThreadProcessId(taskbar, out var taskbarProcessId);
             var root = AutomationElement.FromHandle(taskbar);
-            var elements = root.FindAll(TreeScope.Descendants, Condition.TrueCondition);
+            var cacheRequest = new CacheRequest
+            {
+                TreeScope = TreeScope.Element
+            };
+            cacheRequest.Add(AutomationElement.ProcessIdProperty);
+            cacheRequest.Add(AutomationElement.IsOffscreenProperty);
+            cacheRequest.Add(AutomationElement.BoundingRectangleProperty);
+            cacheRequest.Add(AutomationElement.AutomationIdProperty);
+            cacheRequest.Add(AutomationElement.ControlTypeProperty);
+            AutomationElementCollection elements;
+            using (cacheRequest.Activate())
+            {
+                elements = root.FindAll(TreeScope.Descendants, Condition.TrueCondition);
+            }
             var start = Span.Invalid;
             var widgets = Span.Invalid;
             var notification = Span.Invalid;
@@ -238,7 +298,7 @@ public sealed class TaskbarEmbedder
             {
                 try
                 {
-                    var current = element.Current;
+                    var current = element.Cached;
                     if (current.ProcessId != taskbarProcessId || current.IsOffscreen) continue;
                     var rectangle = current.BoundingRectangle;
                     if (rectangle.IsEmpty || rectangle.Right <= taskbarRect.Left ||
