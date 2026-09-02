@@ -545,7 +545,11 @@ public partial class TaskbarIslandWindow : Window
                     taskbar, taskbarRect.Left + margin, margin)
             };
             x = Math.Clamp(x, taskbarRect.Left + margin, taskbarRect.Right - widthPx - margin);
-            y = taskbarRect.Top + Math.Max(0, (taskbarHeight - heightPx) / 2);
+            // The floating island is meant to sit over the taskbar band (its widgets/Start row),
+            // not be vertically re-centered inside a thick Win11 "floating" taskbar. Keeping the
+            // top edge at the taskbar's top avoids the island dropping out of view when a
+            // desktop/taskbar click re-fires ApplyDisplayMode through the WinEvent hook.
+            y = taskbarRect.Top + Math.Max(0, (taskbarHeight - heightPx) * 1 / 4);
         }
         else
         {
