@@ -5,8 +5,9 @@ namespace BalanceIsland.Windows.Tests;
 public sealed class TaskbarFloatingPlacementTests
 {
     [Fact]
-    public void Left_aligned_places_island_immediately_left_of_widgets()
+    public void Left_aligned_aligns_island_right_edge_to_widgets_slot()
     {
+        // Island width 160, widgets slot begins at x=180. Right edge is flush to the slot.
         var actual = TaskbarFloatingPlacement.PreferredLeft(
             fallbackLeft: 6,
             centered: false,
@@ -17,29 +18,29 @@ public sealed class TaskbarFloatingPlacementTests
             islandWidth: 160,
             gap: 6);
 
-        Assert.Equal(14, actual);
+        Assert.Equal(20, actual); // 180 - 160
     }
 
     [Fact]
-    public void Left_aligned_without_widgets_occupies_widgets_slot_after_start()
+    public void Left_aligned_widgets_toggle_off_still_aligns_to_persistent_slot()
     {
-        // Closing the Widgets toggle removes the WidgetsButton; the island must take the
-        // widgets slot (immediately right of Start), not the far-left taskbar edge.
+        // Widgets button remains in the UIA tree (offscreen) with its slot, so the island
+        // occupies that slot rather than the far-left Start edge.
         var actual = TaskbarFloatingPlacement.PreferredLeft(
             fallbackLeft: 6,
             centered: false,
             startLeft: 4,
             startRight: 44,
-            widgetsLeft: null,
-            widgetsRight: null,
+            widgetsLeft: 180,
+            widgetsRight: 228,
             islandWidth: 160,
             gap: 6);
 
-        Assert.Equal(50, actual);
+        Assert.Equal(20, actual);
     }
 
     [Fact]
-    public void Centered_places_island_immediately_right_of_widgets()
+    public void Centered_places_island_right_of_widgets()
     {
         var actual = TaskbarFloatingPlacement.PreferredLeft(
             fallbackLeft: 6,
@@ -51,23 +52,23 @@ public sealed class TaskbarFloatingPlacementTests
             islandWidth: 160,
             gap: 6);
 
-        Assert.Equal(394, actual);
+        Assert.Equal(394, actual); // 388 + 6
     }
 
     [Fact]
-    public void Centered_without_widgets_occupies_widgets_slot_left_of_start()
+    public void Without_widgets_slot_falls_back_to_start_anchor()
     {
         var actual = TaskbarFloatingPlacement.PreferredLeft(
             fallbackLeft: 6,
-            centered: true,
-            startLeft: 400,
-            startRight: 440,
+            centered: false,
+            startLeft: 4,
+            startRight: 44,
             widgetsLeft: null,
             widgetsRight: null,
             islandWidth: 160,
             gap: 6);
 
-        Assert.Equal(234, actual);
+        Assert.Equal(50, actual); // 44 + 6
     }
 
     [Fact]
@@ -87,18 +88,18 @@ public sealed class TaskbarFloatingPlacementTests
     }
 
     [Fact]
-    public void Without_start_anchor_falls_back_to_safe_left()
+    public void Centered_without_widgets_occupies_slot_left_of_start()
     {
         var actual = TaskbarFloatingPlacement.PreferredLeft(
             fallbackLeft: 6,
-            centered: false,
-            startLeft: null,
-            startRight: null,
-            widgetsLeft: 180,
-            widgetsRight: 228,
+            centered: true,
+            startLeft: 400,
+            startRight: 440,
+            widgetsLeft: null,
+            widgetsRight: null,
             islandWidth: 160,
             gap: 6);
 
-        Assert.Equal(14, actual);
+        Assert.Equal(240, actual); // 400 - 160
     }
 }

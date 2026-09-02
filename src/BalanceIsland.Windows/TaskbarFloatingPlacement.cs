@@ -16,21 +16,24 @@ public static class TaskbarFloatingPlacement
         var safeWidth = Math.Max(1, islandWidth);
         var safeGap = Math.Max(0, gap);
 
+        // Widgets hold a persistent taskbar slot (their button stays in the UIA tree even when
+        // the toggle is off). The island's RIGHT edge aligns to that slot.
         if (widgetsLeft is { } wl && widgetsRight is { } wr && wr > wl)
         {
-            // Widgets are present: place the island just left of them when Start is left-aligned,
-            // or just right of them when Start is centered (the widgets move beside the centered Start).
+            // Left-aligned Start: the island occupies the widgets slot (right edge flush to it),
+            // which is just right of the Start button / task buttons.
+            // Centered Start: widgets sit right of Start; place the island to their right.
             return centered
                 ? Math.Max(safeFallback, wr + safeGap)
-                : Math.Max(safeFallback, wl - safeGap - safeWidth);
+                : Math.Max(safeFallback, wl - safeWidth);
         }
 
-        // Widgets toggle is off (no WidgetsButton). The island must occupy the widgets slot rather
-        // than dropping to the far-left taskbar edge (which would overlap the Start button).
+        // No widgets slot readable: fall back to the Start button anchor so the island never
+        // overlaps the far-left taskbar edge / Start button.
         if (startLeft is { } sl && startRight is { } sr && sr > sl)
         {
             return centered
-                ? Math.Max(safeFallback, sl - safeGap - safeWidth)
+                ? Math.Max(safeFallback, sl - safeWidth)
                 : Math.Max(safeFallback, sr + safeGap);
         }
 

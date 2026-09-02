@@ -243,7 +243,13 @@ public sealed class TaskbarEmbedder
                 try
                 {
                     var current = element.Current;
-                    if (current.ProcessId != taskbarProcessId || current.IsOffscreen) continue;
+                    if (current.ProcessId != taskbarProcessId) continue;
+                    var automationId = current.AutomationId;
+                    // The Widgets button keeps a hidden slot in the taskbar's UIA tree even when
+                    // its toggle is off. Do not discard it as off-screen: the island must occupy
+                    // that slot (right edge aligned to it) instead of dropping to the far-left
+                    // Start edge. All other off-screen elements are still skipped.
+                    if (current.IsOffscreen && automationId != "WidgetsButton") continue;
                     var rectangle = current.BoundingRectangle;
                     if (rectangle.IsEmpty || rectangle.Right <= taskbarRect.Left ||
                         rectangle.Left >= taskbarRect.Right || rectangle.Bottom <= taskbarRect.Top ||
@@ -254,7 +260,6 @@ public sealed class TaskbarEmbedder
                         (int)Math.Floor(rectangle.Top),
                         (int)Math.Ceiling(rectangle.Right),
                         (int)Math.Ceiling(rectangle.Bottom));
-                    var automationId = current.AutomationId;
                     if (automationId == "StartButton") start = span;
                     else if (automationId == "WidgetsButton") widgets = span;
                     else if (automationId is "SystemTrayIcon" or "NotifyItemIcon")
