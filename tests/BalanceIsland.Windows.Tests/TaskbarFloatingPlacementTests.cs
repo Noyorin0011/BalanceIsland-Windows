@@ -11,6 +11,8 @@ public sealed class TaskbarFloatingPlacementTests
             taskbarLeft: 0,
             taskbarTop: 1032,
             taskbarRight: 1920,
+            taskbarHeight: 48,
+            islandHeight: 38,
             centered: true,
             startLeft: 760,
             startRight: 808,
@@ -22,7 +24,7 @@ public sealed class TaskbarFloatingPlacementTests
             gap: 6);
 
         Assert.Equal(186, actual.Left);
-        Assert.Equal(1032, actual.Top);
+        Assert.Equal(1037, actual.Top);
         Assert.True(actual.FitsInTaskbarBand);
     }
 
@@ -33,6 +35,8 @@ public sealed class TaskbarFloatingPlacementTests
             taskbarLeft: 0,
             taskbarTop: 1032,
             taskbarRight: 1920,
+            taskbarHeight: 48,
+            islandHeight: 38,
             centered: true,
             startLeft: 760,
             startRight: 808,
@@ -44,7 +48,7 @@ public sealed class TaskbarFloatingPlacementTests
             gap: 6);
 
         Assert.Equal(6, actual.Left);
-        Assert.Equal(1032, actual.Top);
+        Assert.Equal(1037, actual.Top);
         Assert.True(actual.FitsInTaskbarBand);
     }
 
@@ -55,6 +59,8 @@ public sealed class TaskbarFloatingPlacementTests
             taskbarLeft: 0,
             taskbarTop: 1032,
             taskbarRight: 1920,
+            taskbarHeight: 48,
+            islandHeight: 38,
             centered: false,
             startLeft: 0,
             startRight: 48,
@@ -66,7 +72,7 @@ public sealed class TaskbarFloatingPlacementTests
             gap: 6);
 
         Assert.Equal(1269, actual.Left);
-        Assert.Equal(1032, actual.Top);
+        Assert.Equal(1037, actual.Top);
         Assert.True(actual.FitsInTaskbarBand);
         Assert.Equal(1500 - 6, actual.Left + 225);
     }
@@ -78,6 +84,8 @@ public sealed class TaskbarFloatingPlacementTests
             taskbarLeft: 0,
             taskbarTop: 1032,
             taskbarRight: 1920,
+            taskbarHeight: 48,
+            islandHeight: 38,
             centered: false,
             startLeft: 0,
             startRight: 48,
@@ -89,7 +97,7 @@ public sealed class TaskbarFloatingPlacementTests
             gap: 6);
 
         Assert.Equal(119, actual.Left);
-        Assert.Equal(1032, actual.Top);
+        Assert.Equal(1037, actual.Top);
         Assert.False(actual.FitsInTaskbarBand);
     }
 
@@ -100,6 +108,8 @@ public sealed class TaskbarFloatingPlacementTests
             taskbarLeft: 0,
             taskbarTop: 1032,
             taskbarRight: 1920,
+            taskbarHeight: 48,
+            islandHeight: 38,
             centered: false,
             startLeft: 0,
             startRight: 48,
@@ -111,7 +121,7 @@ public sealed class TaskbarFloatingPlacementTests
             gap: 6);
 
         Assert.Equal(1269, actual.Left);
-        Assert.Equal(1032, actual.Top);
+        Assert.Equal(1037, actual.Top);
         Assert.False(actual.FitsInTaskbarBand);
     }
 
@@ -125,6 +135,8 @@ public sealed class TaskbarFloatingPlacementTests
             taskbarLeft: 0,
             taskbarTop: 1032,
             taskbarRight: 1920,
+            taskbarHeight: 48,
+            islandHeight: 38,
             centered: false,
             startLeft: 0,
             startRight: 48,
@@ -136,7 +148,7 @@ public sealed class TaskbarFloatingPlacementTests
             gap: 6);
 
         Assert.Equal(1269, actual.Left);
-        Assert.Equal(1032, actual.Top);
+        Assert.Equal(1037, actual.Top);
         Assert.False(actual.FitsInTaskbarBand);
     }
 
@@ -147,6 +159,8 @@ public sealed class TaskbarFloatingPlacementTests
             taskbarLeft: 0,
             taskbarTop: 1032,
             taskbarRight: 300,
+            taskbarHeight: 48,
+            islandHeight: 38,
             centered: false,
             startLeft: 0,
             startRight: 48,
@@ -158,7 +172,7 @@ public sealed class TaskbarFloatingPlacementTests
             gap: 6);
 
         Assert.Equal(6, actual.Left);
-        Assert.Equal(1032, actual.Top);
+        Assert.Equal(1037, actual.Top);
         Assert.False(actual.FitsInTaskbarBand);
     }
 
@@ -169,6 +183,8 @@ public sealed class TaskbarFloatingPlacementTests
             taskbarLeft: 0,
             taskbarTop: 1032,
             taskbarRight: 1920,
+            taskbarHeight: 48,
+            islandHeight: 38,
             centered: false,
             startLeft: 0,
             startRight: 48,
@@ -180,7 +196,7 @@ public sealed class TaskbarFloatingPlacementTests
             gap: 6);
 
         Assert.Equal(1369, actual.Left);
-        Assert.Equal(1032, actual.Top);
+        Assert.Equal(1037, actual.Top);
         Assert.True(actual.FitsInTaskbarBand);
         Assert.Equal(1600 - 6, actual.Left + 225);
     }
@@ -192,6 +208,8 @@ public sealed class TaskbarFloatingPlacementTests
             taskbarLeft: 0,
             taskbarTop: 1032,
             taskbarRight: 1920,
+            taskbarHeight: 48,
+            islandHeight: 38,
             centered: false,
             startLeft: 0,
             startRight: 48,
@@ -203,7 +221,7 @@ public sealed class TaskbarFloatingPlacementTests
             gap: 6);
 
         Assert.Equal(1689, actual.Left);
-        Assert.Equal(1032, actual.Top);
+        Assert.Equal(1037, actual.Top);
         Assert.True(actual.FitsInTaskbarBand);
     }
 
@@ -214,6 +232,8 @@ public sealed class TaskbarFloatingPlacementTests
             taskbarLeft: 0,
             taskbarTop: 1032,
             taskbarRight: 1920,
+            taskbarHeight: 48,
+            islandHeight: 38,
             centered: false,
             startLeft: 0,
             startRight: 48,
@@ -235,6 +255,8 @@ public sealed class TaskbarFloatingPlacementTests
             taskbarLeft: 0,
             taskbarTop: 1032,
             taskbarRight: 1920,
+            taskbarHeight: 48,
+            islandHeight: 38,
             centered: false,
             startLeft: 0,
             startRight: 48,
@@ -256,6 +278,8 @@ public sealed class TaskbarFloatingPlacementTests
             taskbarLeft: 0,
             taskbarTop: 1032,
             taskbarRight: 1920,
+            taskbarHeight: 48,
+            islandHeight: 38,
             centered: true,
             startLeft: 400,
             startRight: 448,
@@ -267,6 +291,32 @@ public sealed class TaskbarFloatingPlacementTests
             gap: 6);
 
         Assert.False(actual.FitsInTaskbarBand);
+    }
+
+    [Theory]
+    [InlineData(38, 38)]
+    [InlineData(32, 38)]
+    public void Horizontal_taskbar_never_offsets_an_island_that_is_not_shorter(
+        int taskbarHeight,
+        int islandHeight)
+    {
+        var actual = TaskbarFloatingPlacement.PlaceHorizontal(
+            taskbarLeft: 0,
+            taskbarTop: 1032,
+            taskbarRight: 1920,
+            taskbarHeight: taskbarHeight,
+            islandHeight: islandHeight,
+            centered: true,
+            startLeft: 760,
+            startRight: 808,
+            widgetsLeft: 0,
+            widgetsRight: 180,
+            taskButtonsRight: 1120,
+            notificationLeft: 1600,
+            islandWidth: 225,
+            gap: 6);
+
+        Assert.Equal(1032, actual.Top);
     }
 
     [Fact]
