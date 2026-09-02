@@ -37,6 +37,15 @@ public sealed class TaskbarEmbedder
     public bool IsAttached => _window != IntPtr.Zero && IsWindow(_window) &&
                               _taskbar != IntPtr.Zero && GetParent(_window) == _taskbar;
 
+    // True when the Widgets button has a readable slot (with or without its visual toggle).
+    public bool HasWidgets(IntPtr taskbar)
+    {
+        if (taskbar == IntPtr.Zero || !GetWindowRect(taskbar, out var taskbarRect))
+            return false;
+        var geometry = ReadGeometry(taskbar, taskbarRect);
+        return geometry.WidgetsButton.IsValid;
+    }
+
     // Right edge of the notification / system-tray area, or taskbar right edge as a fallback.
     public int GetNotificationAreaLeft(IntPtr taskbar)
     {
