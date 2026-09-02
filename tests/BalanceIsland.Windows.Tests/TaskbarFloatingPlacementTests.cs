@@ -133,11 +133,13 @@ public sealed class TaskbarFloatingPlacementTests
     }
 
     [Theory]
-    [InlineData(760, false, true)]
-    [InlineData(0, true, false)]
-    [InlineData(null, true, true)]
+    [InlineData(760, 808, false, true)]
+    [InlineData(100, 148, false, true)]
+    [InlineData(6, 54, true, false)]
+    [InlineData(null, null, true, true)]
     public void Alignment_uses_snapshot_start_position_before_registry_fallback(
         int? startLeft,
+        int? startRight,
         bool registryCentered,
         bool expected)
     {
@@ -145,6 +147,7 @@ public sealed class TaskbarFloatingPlacementTests
             taskbarLeft: 0,
             taskbarRight: 1920,
             startLeft: startLeft,
+            startRight: startRight,
             registryCentered: registryCentered);
 
         Assert.Equal(expected, actual);
