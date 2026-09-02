@@ -44,15 +44,13 @@ public static class TaskbarFloatingPlacement
         if (hasStart) occupiedRight = Math.Max(occupiedRight, startRight!.Value);
         if (taskButtonsRight is { } tbr && tbr > taskbarLeft)
             occupiedRight = Math.Max(occupiedRight, tbr);
-        if (hasWidgets && widgetsLeft!.Value <= occupiedRight && widgetsRight!.Value > occupiedRight)
-            occupiedRight = widgetsRight.Value;
         var minimumLeft = Math.Max(safeLeft, occupiedRight + safeGap);
-        var desired = hasWidgets && widgetsLeft!.Value > occupiedRight
+        var desired = hasWidgets
             ? widgetsLeft.Value - safeGap - safeWidth
             : minimumLeft;
 
         var firstRightElement = taskbarRight;
-        if (hasWidgets && widgetsLeft!.Value > occupiedRight)
+        if (hasWidgets)
             firstRightElement = Math.Min(firstRightElement, widgetsLeft.Value);
         if (notificationLeft is { } nl && nl > occupiedRight)
             firstRightElement = Math.Min(firstRightElement, nl);
