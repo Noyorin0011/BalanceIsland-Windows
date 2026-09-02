@@ -51,9 +51,13 @@ public sealed class TaskbarEmbedder
             .OfType<TaskbarIslandWindow>()
             .FirstOrDefault()?.ActualWidth ?? 160d;
         var islandWidth = Math.Max(1, (int)Math.Round(islandWidthDip * dpi / 96d));
+        var centered = IsCenteredTaskbar(geometry.StartButton, taskbarRect);
 
         return TaskbarFloatingPlacement.PreferredLeft(
             fallbackLeft,
+            centered,
+            geometry.StartButton.IsValid ? geometry.StartButton.Left : null,
+            geometry.StartButton.IsValid ? geometry.StartButton.Right : null,
             geometry.WidgetsButton.IsValid ? geometry.WidgetsButton.Left : null,
             geometry.WidgetsButton.IsValid ? geometry.WidgetsButton.Right : null,
             islandWidth,
