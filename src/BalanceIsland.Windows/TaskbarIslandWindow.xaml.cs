@@ -550,7 +550,7 @@ public partial class TaskbarIslandWindow : Window
             var useWin11TaskbarLayout =
                 OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
             var automaticPlacement = useWin11TaskbarLayout
-                ? _embedder.GetFloatingPlacement(taskbar, widthPx, margin)
+                ? _embedder.GetFloatingPlacement(taskbar, widthPx, heightPx, margin)
                 : _embedder.GetLegacyFloatingPlacement(
                     taskbar, widthPx, heightPx, margin);
             x = _coordinator.State.IslandPositionPreset switch

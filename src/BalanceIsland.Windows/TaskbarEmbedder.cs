@@ -40,6 +40,7 @@ public sealed class TaskbarEmbedder
     public TaskbarFloatingPlacement.Result GetFloatingPlacement(
         IntPtr taskbar,
         int islandWidth,
+        int islandHeight,
         int gap)
     {
         if (taskbar == IntPtr.Zero || !GetWindowRect(taskbar, out var taskbarRect))
@@ -67,6 +68,8 @@ public sealed class TaskbarEmbedder
             taskbarRect.Left,
             taskbarRect.Top,
             taskbarRect.Right,
+            taskbarHeight,
+            islandHeight,
             centered,
             geometry.StartButton.IsValid ? geometry.StartButton.Left : null,
             startRight,

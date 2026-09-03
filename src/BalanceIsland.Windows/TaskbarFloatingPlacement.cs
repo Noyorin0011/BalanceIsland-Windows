@@ -8,6 +8,8 @@ public static class TaskbarFloatingPlacement
         int taskbarLeft,
         int taskbarTop,
         int taskbarRight,
+        int taskbarHeight,
+        int islandHeight,
         bool centered,
         int? startLeft,
         int? startRight,
@@ -20,6 +22,9 @@ public static class TaskbarFloatingPlacement
     {
         var safeWidth = Math.Max(1, islandWidth);
         var safeGap = Math.Max(0, gap);
+        var safeTaskbarHeight = Math.Max(1, taskbarHeight);
+        var safeIslandHeight = Math.Max(1, islandHeight);
+        var centeredTop = taskbarTop + Math.Max(0, (safeTaskbarHeight - safeIslandHeight) / 2);
         var safeLeft = taskbarLeft + safeGap;
         var safeRight = Math.Max(safeLeft, taskbarRight - safeGap - safeWidth);
         var hasStart = startLeft is { } sl && startRight is { } sr && sr > sl;
@@ -36,7 +41,7 @@ public static class TaskbarFloatingPlacement
                 ? Math.Min(safeRight, startLeft!.Value - safeGap - safeWidth)
                 : safeRight;
             var fits = desiredLeft >= safeLeft && desiredLeft <= rightBound;
-            return new Result(Math.Clamp(desiredLeft, safeLeft, safeRight), taskbarTop, fits);
+            return new Result(Math.Clamp(desiredLeft, safeLeft, safeRight), centeredTop, fits);
         }
 
         // Left-aligned Start: keep clear of the contiguous Start/task-button group and align
@@ -60,7 +65,7 @@ public static class TaskbarFloatingPlacement
             firstRightElement = Math.Min(firstRightElement, notificationLeft!.Value);
         var maximumLeft = Math.Min(safeRight, firstRightElement - safeGap - safeWidth);
         var fitsLeftAligned = desired >= minimumLeft && desired <= maximumLeft;
-        return new Result(Math.Clamp(desired, safeLeft, safeRight), taskbarTop, fitsLeftAligned);
+        return new Result(Math.Clamp(desired, safeLeft, safeRight), centeredTop, fitsLeftAligned);
     }
 
     public static Result PlaceLegacyHorizontal(
