@@ -268,6 +268,15 @@ public partial class MainWindow : Window
             : "编辑模式已关闭：浮岛恢复固定并穿透鼠标点击。";
     }
 
+    private void SilentStartupBox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loadingControls) return;
+        _coordinator.SetSilentStartup(SilentStartupBox.IsChecked == true);
+        StatusText.Text = SilentStartupBox.IsChecked == true
+            ? "已启用静默启动；下次启动不打开主窗口，但托盘、浮岛和后台刷新仍会运行。"
+            : "已关闭静默启动；下次启动将正常打开主窗口。";
+    }
+
     private void ThemeModeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_loadingControls || ThemeModeBox.SelectedValue is not AppThemeMode mode) return;
@@ -751,6 +760,7 @@ public partial class MainWindow : Window
             CustomAnomalyColorBox.Text = _coordinator.State.CustomAnomalyColor;
             CustomWarning15ColorBox.Text = _coordinator.State.CustomWarning15Color;
             CustomCriticalColorBox.Text = _coordinator.State.CustomCriticalColor;
+            SilentStartupBox.IsChecked = _coordinator.State.SilentStartupEnabled;
             EditIslandBox.IsChecked = _coordinator.State.IslandEditMode;
             PositionPresetBox.SelectedValue = _coordinator.State.IslandPositionPreset;
             SizePresetBox.SelectedValue = _coordinator.State.IslandSizePreset;

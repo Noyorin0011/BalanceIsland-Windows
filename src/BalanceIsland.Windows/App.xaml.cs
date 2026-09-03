@@ -28,6 +28,9 @@ public partial class App : System.Windows.Application
         var credentials = new WindowsCredentialStore();
         var client = new ProviderClient();
         _coordinator = new BalanceCoordinator(store, credentials, client);
+        var startSilent = StartupBehavior.ShouldStartSilent(
+            _coordinator.State.SilentStartupEnabled,
+            e.Args);
         _notificationService = new WindowsNotificationService();
         NotificationStatus = _notificationService.ChannelStatus;
         _themeManager = new SystemThemeManager(Resources, Dispatcher, _coordinator.State.ThemeMode);
@@ -58,7 +61,7 @@ public partial class App : System.Windows.Application
         _islandHealthTimer.Start();
         _coordinator.AlertRaised += Coordinator_AlertRaised;
         if (_coordinator.State.IslandEnabled) _island?.Show();
-        _mainWindow.Show();
+        if (!startSilent) _mainWindow.Show();
         _ = _coordinator.RefreshDueAsync(force: false);
     }
 

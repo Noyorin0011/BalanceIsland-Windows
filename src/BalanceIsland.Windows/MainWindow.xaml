@@ -146,6 +146,16 @@
                                    Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,2,0,10" />
                         <Border Background="{DynamicResource CardBackground}" CornerRadius="10" Padding="16" Margin="0,0,0,16">
                             <StackPanel>
+                                <TextBlock Text="应用启动" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock Text="静默启动只隐藏主配置窗口；托盘、浮岛、后台刷新和余额告警仍会正常运行。"
+                                           Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,3,0,8" />
+                                <CheckBox x:Name="SilentStartupBox" Content="静默启动（不打开主窗口）"
+                                          Checked="SilentStartupBox_Changed" Unchecked="SilentStartupBox_Changed" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="{DynamicResource CardBackground}" CornerRadius="10" Padding="16" Margin="0,0,0,16">
+                            <StackPanel>
                                 <TextBlock Text="应用主题" FontSize="16" FontWeight="SemiBold" />
                                 <TextBlock Text="用途：统一设置窗口、对话框和原生标题栏的明暗外观。"
                                            Foreground="{DynamicResource SecondaryText}" TextWrapping="Wrap" Margin="0,3,0,8" />

@@ -289,6 +289,13 @@ public sealed class BalanceCoordinator : IDisposable
         _store.Save(State);
     }
 
+    public void SetSilentStartup(bool enabled)
+    {
+        if (State.SilentStartupEnabled == enabled) return;
+        State.SilentStartupEnabled = enabled;
+        SaveAndNotify();
+    }
+
     public void SetEnvironmentAutoImport(bool enabled)
     {
         if (State.EnvironmentAutoImportEnabled == enabled) return;

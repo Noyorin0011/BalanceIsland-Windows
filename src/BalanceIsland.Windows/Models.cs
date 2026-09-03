@@ -271,6 +271,7 @@ public sealed class AppState
     public double IslandEditLeft { get; set; } = double.NaN;
     public double IslandEditTop { get; set; } = double.NaN;
     public int IslandLayoutVersion { get; set; }
+    public bool SilentStartupEnabled { get; set; }
     public bool EnvironmentAutoImportEnabled { get; set; }
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public AppThemeMode ThemeMode { get; set; } = AppThemeMode.System;
