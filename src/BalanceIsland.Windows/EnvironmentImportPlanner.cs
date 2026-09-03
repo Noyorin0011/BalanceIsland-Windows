@@ -31,15 +31,27 @@ public static class EnvironmentImportPlanner
             .OfType<Account>()
             .Select(account => new ExistingCredential(account, ReadCleanSecret(account, resolveSecret)))
             .ToArray();
-        var accepted = new List<CandidateIdentity>();
-        var result = new List<EnvironmentCredentialCandidate>();
-
+        var prepared = new List<PreparedCandidate>();
         foreach (var candidate in candidates)
         {
             if (candidate is null) continue;
             var key = ApiKeySanitizer.Clean(candidate.ApiKey);
-            if (string.IsNullOrWhiteSpace(key)) continue;
+            if (!string.IsNullOrWhiteSpace(key))
+            {
+                prepared.Add(new PreparedCandidate(candidate, key));
+            }
+        }
 
+        var accepted = new List<CandidateIdentity>();
+        var result = new List<EnvironmentCredentialCandidate>();
+        var ordered = prepared
+            .Where(item => item.Candidate.Provider is not null)
+            .Concat(prepared.Where(item => item.Candidate.Provider is null));
+
+        foreach (var item in ordered)
+        {
+            var candidate = item.Candidate;
+            var key = item.ApiKey;
             var sameVariable = candidate.Provider is { } provider
                 ? existing.Any(item =>
                     item.Account.CredentialSource == CredentialSource.EnvironmentVariable &&
@@ -84,7 +96,9 @@ public static class EnvironmentImportPlanner
     {
         try
         {
-            return ApiKeySanitizer.Clean(resolveSecret(account));
+            return resolveSecret(account) is { } raw
+                ? ApiKeySanitizer.Clean(raw)
+                : "";
         }
         catch
         {
@@ -93,5 +107,6 @@ public static class EnvironmentImportPlanner
     }
 
     private sealed record ExistingCredential(Account Account, string ApiKey);
+    private sealed record PreparedCandidate(EnvironmentCredentialCandidate Candidate, string ApiKey);
     private sealed record CandidateIdentity(Provider? Provider, string VariableName, string ApiKey);
 }
