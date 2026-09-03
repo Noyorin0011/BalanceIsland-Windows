@@ -99,6 +99,28 @@ public sealed class EnvironmentImportPlannerTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Classified_and_unclassified_candidates_with_the_same_key_are_deduplicated_regardless_of_order(
+        bool unclassifiedFirst)
+    {
+        var classified = new EnvironmentCredentialCandidate(
+            Provider.OpenRouter, "OPENROUTER_API_KEY", "shared-secret");
+        var unclassified = new EnvironmentCredentialCandidate(
+            null, "CUSTOM_API_KEY", "Bearer shared-secret");
+        var candidates = unclassifiedFirst
+            ? new[] { unclassified, classified }
+            : new[] { classified, unclassified };
+
+        var actual = EnvironmentImportPlanner.FindNew(
+            candidates,
+            [],
+            _ => null);
+
+        Assert.Same(classified, Assert.Single(actual));
+    }
+
+    [Theory]
     [InlineData(false, 0, EnvironmentPromptAction.None)]
     [InlineData(true, 0, EnvironmentPromptAction.None)]
     [InlineData(false, 1, EnvironmentPromptAction.ShowDialog)]
