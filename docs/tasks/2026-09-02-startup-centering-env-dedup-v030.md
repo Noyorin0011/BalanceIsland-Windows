@@ -100,7 +100,7 @@ top = taskbarTop - islandHeight - margin
 命令行支持：
 
 ```powershell
-BalanceIsland.Windows.exe --silent
+BalanceIsland.exe --silent
 ```
 
 `--silent` 只强制本次启动静默，不修改应用内设置。参数比较忽略大小写；未知参数不导致启动失败。
