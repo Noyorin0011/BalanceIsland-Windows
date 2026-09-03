@@ -289,11 +289,29 @@ public sealed class BalanceCoordinator : IDisposable
         _store.Save(State);
     }
 
+    public void SetSilentStartup(bool enabled)
+    {
+        if (State.SilentStartupEnabled == enabled) return;
+        State.SilentStartupEnabled = enabled;
+        SaveAndNotify();
+    }
+
     public void SetEnvironmentAutoImport(bool enabled)
     {
         if (State.EnvironmentAutoImportEnabled == enabled) return;
         State.EnvironmentAutoImportEnabled = enabled;
         SaveAndNotify();
+    }
+
+    public IReadOnlyList<EnvironmentCredentialCandidate> FindNewEnvironmentCandidates(
+        IEnumerable<EnvironmentCredentialCandidate> candidates)
+    {
+        return EnvironmentImportPlanner.FindNew(
+            candidates,
+            State.Accounts,
+            account => account.CredentialSource == CredentialSource.EnvironmentVariable
+                ? EnvironmentCredentialDiscovery.Read(account.EnvironmentVariableName)
+                : _credentials.Read(account.Id));
     }
 
     public EnvironmentImportResult ImportEnvironmentAccounts(

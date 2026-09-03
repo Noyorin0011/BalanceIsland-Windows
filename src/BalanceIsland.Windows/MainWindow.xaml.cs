@@ -16,6 +16,7 @@ public partial class MainWindow : Window
     private readonly bool _isWindows11;
     private bool _updatingIslandMode;
     private bool _loadingControls;
+    private bool _startupEnvironmentPromptHandled;
     private string? _preferredDisplayGroupId;
     private readonly App? _app;
 
@@ -128,8 +129,10 @@ public partial class MainWindow : Window
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
+        if (_startupEnvironmentPromptHandled) return;
+        _startupEnvironmentPromptHandled = true;
         if (_coordinator.State.EnvironmentAutoImportEnabled)
-            Dispatcher.BeginInvoke(OpenEnvironmentImportDialog);
+            Dispatcher.BeginInvoke(() => OpenEnvironmentImportDialog(onlyNew: true));
     }
 
     private async void AddAccount_Click(object sender, RoutedEventArgs e)
@@ -266,6 +269,15 @@ public partial class MainWindow : Window
         StatusText.Text = EditIslandBox.IsChecked == true
             ? "编辑模式已开启：浮岛会显示在任务栏上方，可拖动并缩放。"
             : "编辑模式已关闭：浮岛恢复固定并穿透鼠标点击。";
+    }
+
+    private void SilentStartupBox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loadingControls) return;
+        _coordinator.SetSilentStartup(SilentStartupBox.IsChecked == true);
+        StatusText.Text = SilentStartupBox.IsChecked == true
+            ? "已启用静默启动；下次启动不打开主窗口，但托盘、浮岛和后台刷新仍会运行。"
+            : "已关闭静默启动；下次启动将正常打开主窗口。";
     }
 
     private void ThemeModeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -600,7 +612,8 @@ public partial class MainWindow : Window
             : "已停用启动扫描提示；已添加的环境账户仍保留。";
     }
 
-    private void ScanEnvironment_Click(object sender, RoutedEventArgs e) => OpenEnvironmentImportDialog();
+    private void ScanEnvironment_Click(object sender, RoutedEventArgs e) =>
+        OpenEnvironmentImportDialog(onlyNew: false);
 
     private void NotificationSettings_Changed(object sender, RoutedEventArgs e)
     {
@@ -651,9 +664,16 @@ public partial class MainWindow : Window
         };
     }
 
-    private void OpenEnvironmentImportDialog()
+    private void OpenEnvironmentImportDialog(bool onlyNew)
     {
-        var candidates = EnvironmentCredentialDiscovery.Scan();
+        IReadOnlyList<EnvironmentCredentialCandidate> candidates =
+            EnvironmentCredentialDiscovery.Scan();
+        if (onlyNew)
+        {
+            candidates = _coordinator.FindNewEnvironmentCandidates(candidates);
+            if (candidates.Count == 0) return;
+        }
+
         var dialog = new EnvironmentImportWindow(candidates, _coordinator.State.Accounts) { Owner = this };
         (System.Windows.Application.Current as App)?.TrackWindow(dialog);
         if (dialog.ShowDialog() != true) return;
@@ -751,6 +771,7 @@ public partial class MainWindow : Window
             CustomAnomalyColorBox.Text = _coordinator.State.CustomAnomalyColor;
             CustomWarning15ColorBox.Text = _coordinator.State.CustomWarning15Color;
             CustomCriticalColorBox.Text = _coordinator.State.CustomCriticalColor;
+            SilentStartupBox.IsChecked = _coordinator.State.SilentStartupEnabled;
             EditIslandBox.IsChecked = _coordinator.State.IslandEditMode;
             PositionPresetBox.SelectedValue = _coordinator.State.IslandPositionPreset;
             SizePresetBox.SelectedValue = _coordinator.State.IslandSizePreset;

@@ -1,5 +1,9 @@
 # Balance Island for Windows
 
+**简体中文** | [English](README.en.md)
+
+> 文档提供中文与英文版本；应用界面目前仅支持简体中文。
+
 Windows 任务栏 AI API 余额与用量监控工具。当前仓库是以 Android
 [Balance Island v0.9.2](https://github.com/Noyorin0011/BalanceIsland/releases/tag/v0.9.2)
 为行为基线建立的 Windows 版本；当前应用版本为 `0.3.0`。
@@ -19,7 +23,8 @@ Windows 任务栏 AI API 余额与用量监控工具。当前仓库是以 Androi
 - 每账户 `1–1440` 分钟刷新，`0` 使用 v0.9.2 的 Provider 建议周期。
 - 手动刷新 30 秒防抖；HTTP 429 遵循 `Retry-After` 并指数退避，最长 24 小时。
 - 手动余额、警告线、进入预警/临界区间时通知，以及带冷却时间的异常变动检测。
-- 可搜索 Provider，统一显示支持能力、环境变量和限制说明；环境变量扫描必须由用户勾选确认后才导入。
+- 可搜索 Provider，统一显示支持能力、环境变量和限制说明；自动扫描只提示尚未导入的新凭据，任何导入仍必须由用户勾选确认。
+- 支持应用内持久化“静默启动”开关与单次 `--silent` 参数；静默时主窗口保持隐藏，托盘、浮岛和后台刷新照常运行。
 - 浮岛可按账户轮播，或聚合同一 Provider 的账户；支持五套状态色板和自定义四状态颜色。
 - Windows 11 可发送重要通知；Windows 10 使用普通通知，原生通知失败时回退托盘气泡。
 - DeepSeek、OpenAI、OpenRouter、SiliconFlow、Moonshot、MiMo、Anthropic、Gemini 与 xAI。
@@ -41,6 +46,7 @@ Windows 任务栏 AI API 余额与用量监控工具。当前仓库是以 Androi
 
 - **垂直任务栏支持仍不稳定**：Windows 10 任务栏靠左/靠右（垂直）时，浮岛定位与样式可能不准确。水平任务栏（默认）行为正常。该问题在 v0.3.1 前需优先复验（详见 `docs/testing/v0.3.0-validation.md`）。
 - Win11 浮岛在"开始按钮左对齐 ↔ 居中"切换时，定位可能存在短暂延迟。
+- 应用界面目前仅支持简体中文；英文 README 不代表应用已经提供英文界面。
 
 ## v0.3.0 使用教程
 
@@ -77,9 +83,17 @@ Windows 任务栏 AI API 余额与用量监控工具。当前仓库是以 Androi
 2. 点“扫描环境”。应用扫描当前进程、当前用户和系统三级环境变量，显示变量名、作用域、匹配 Provider、匹配依据与安全掩码。
 3. 默认所有结果均不选。普通 `sk-` 等无法自动分类的候选会完整遮盖 Key，并要求先在 Provider 下拉列表明确选择归属；随后仅勾选需要的项目并导入。点取消不会改动配置。
 
-导入账户以后仍会在每次刷新时读取环境变量的新值。再次扫描相同环境变量会更新安全后缀而不会重复创建。普通 `sk-` 前缀并不能唯一识别 Provider，应用不会靠它猜测归属；必须在导入窗口明确选择 Provider 后才能导入。扫描列表、配置、日志和通知都不会显示完整 Key。
+导入账户以后仍会在每次刷新时读取环境变量的新值。启动自动扫描只会提示尚未由现有账户代表的新凭据；没有新增时不会弹窗。手动“扫描环境”仍显示完整候选列表供检查。普通 `sk-` 前缀并不能唯一识别 Provider，应用不会靠它猜测归属；必须在导入窗口明确选择 Provider 后才能导入。扫描列表、配置、日志和通知都不会显示完整 Key。
 
-### 5. 搜索 Provider 与查看支持列表
+同一 Provider 下，只要现有账户和新变量当前都能读取到相同的规范化 Key，新变量不会重复提示；比较仅在内存中进行，不保存 Key 哈希。如果原变量已被删除，新的变量会作为需要重新关联的来源提示。
+
+### 5. 配置静默启动
+
+1. 打开“显示与外观”，开启“静默启动（不打开主窗口）”。该设置从下次启动生效。
+2. 也可用 `BalanceIsland.exe --silent` 只让本次启动静默；该参数不会修改持久化设置，且大小写不敏感。
+3. 静默启动仍会创建托盘与浮岛并执行后台刷新。发现新环境凭据时只发送普通 Windows 通知；用户稍后从托盘打开主界面后，应用会重新扫描，仍存在的新凭据才显示导入窗口。
+
+### 6. 搜索 Provider 与查看支持列表
 
 1. 在“账户 / API”的 Provider 输入框输入 Provider 名称、别名、环境变量名、Key 前缀或限制关键字。
 2. 从筛选后的下拉列表选择 Provider，再添加账户。
@@ -87,7 +101,7 @@ Windows 任务栏 AI API 余额与用量监控工具。当前仓库是以 Androi
 
 当前目录集中维护 DeepSeek、OpenAI、OpenRouter、SiliconFlow、Kimi / Moonshot、Xiaomi MiMo、Anthropic、Google Gemini 和 xAI / Grok。后续增加 Provider 时，会在同一注册目录补充显示名称、别名、能力、默认币种、刷新周期、环境匹配规则与限制信息，因此搜索、扫描、支持列表和默认设置会同步获得新条目。
 
-### 6. 配置 Windows 重要通知
+### 7. 配置 Windows 重要通知
 
 1. 打开“刷新与通知”，为“余额接近警戒线（15%）”“余额到达警戒线”和“余额异常变动”分别开关。
 2. 查看“通知通道”状态，点“发送测试通知”，并可用“打开 Windows 通知设置”检查系统权限。
@@ -97,9 +111,9 @@ Windows 任务栏 AI API 余额与用量监控工具。当前仓库是以 Androi
 
 ## 升级、迁移与回滚
 
-- 从 v0.2.1 升级时，旧状态采用 `ThemeMode = System`、经典色板及其四个自定义颜色、空分组、无活动分组，三类通知默认开启。
+- 从 v0.2.1 升级时，旧状态采用 `ThemeMode = System`、经典色板及其四个自定义颜色、空分组、无活动分组，三类通知默认开启；静默启动默认关闭。
 - 旧告警级别按新的 `1.15` 边界重新计算；升级或启动迁移本身不会触发通知，只有后续真实刷新进入状态时才会通知。
-- 可在升级前备份 `%LOCALAPPDATA%\BalanceIsland\state.json`。若需回滚到旧应用版本，先退出应用、保留该备份并还原；旧版本会忽略自己不认识的新字段。完整 Key 仍在 Windows Credential Manager，不在 JSON 中。
+- 可在升级前备份 `%LOCALAPPDATA%\BalanceIsland\state.json`。若需回滚到旧应用版本，先退出应用、保留该备份并还原；旧版本会忽略自己不认识的新字段。手动账户的完整 Key 留在 Windows Credential Manager，环境账户的 Key 留在环境变量中动态读取；两者都不写入 JSON。
 - 如果状态文件无法读取，应用以默认状态安全启动，且不会覆盖原文件，直到后续产生有效保存操作。
 
 ## Windows 手动验收清单
@@ -110,7 +124,9 @@ Windows 任务栏 AI API 余额与用量监控工具。当前仓库是以 Androi
 
 - 验证 System/Light/Dark 与高对比度优先级、五套色板与自定义四状态颜色。
 - 验证混合 Provider 轮播、同 Provider 聚合、币种不一致和无数值余额的显示。
-- 验证进程/用户/系统三级扫描、未勾选不导入、重复环境变量不重复创建。
+- 验证进程/用户/系统三级扫描、未勾选不导入、重复环境变量不重复创建；自动扫描无新增时不弹窗。
+- 验证普通启动发现新凭据时弹出导入窗口；静默设置与 `--silent` 都不显示主窗口，有新增时仅通知，随后打开主界面才弹窗。
+- 验证 Win11 水平任务栏内浮岛垂直居中，以及四种开始按钮/Widgets 布局和点击任务栏后的层级恢复。
 - 验证重要通知、专注模式/通知权限影响、测试按钮、全屏隐藏与恢复。
 
 ### `win10-22h2-vm`
@@ -146,7 +162,8 @@ GitHub Actions 会在 Windows runner 上执行 solution tests、Release build �
 
 ## 数据与安全
 
-- API Key 位于当前 Windows 用户的 Credential Manager，目标名为 `BalanceIsland/<account-id>`。
+- 手动输入的 API Key 位于当前 Windows 用户的 Credential Manager，目标名为 `BalanceIsland/<account-id>`。
+- 环境账户的 Key 保留在 Windows 环境变量中并动态读取，不复制到 Credential Manager 或 JSON。
 - 账户、安全 Key 后缀（短 Key 为空）、余额快照与刷新状态位于
   `%LOCALAPPDATA%\BalanceIsland\state.json`。
 - 日志和错误信息不得输出完整 API Key。

@@ -37,6 +37,19 @@ public sealed class ToastPayloadBuilderTests
         Assert.Contains("$10.00 &amp; changed", xml);
     }
 
+    [Fact]
+    public void Application_notification_is_non_urgent_and_contains_no_credential()
+    {
+        var xml = ToastPayloadBuilder.Build(new AppNotification(
+            "发现新的环境 API",
+            "发现 2 个尚未导入的环境凭据。打开 Balance Island 进行确认。"));
+
+        Assert.DoesNotContain("scenario=", xml);
+        Assert.Contains("发现新的环境 API", xml);
+        Assert.Contains("发现 2 个尚未导入的环境凭据", xml);
+        Assert.DoesNotContain("shared-secret", xml);
+    }
+
     [Theory]
     [InlineData("Prod", "••••1234", "Prod · ••••1234")]
     [InlineData("", "••••1234", "••••1234")]
