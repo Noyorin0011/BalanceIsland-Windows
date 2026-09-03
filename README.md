@@ -1,5 +1,9 @@
 # Balance Island for Windows
 
+**简体中文** | [English](README.en.md)
+
+> 文档提供中文与英文版本；应用界面目前仅支持简体中文。
+
 Windows 任务栏 AI API 余额与用量监控工具。当前仓库是以 Android
 [Balance Island v0.9.2](https://github.com/Noyorin0011/BalanceIsland/releases/tag/v0.9.2)
 为行为基线建立的 Windows 版本；当前应用版本为 `0.3.0`。
@@ -42,6 +46,7 @@ Windows 任务栏 AI API 余额与用量监控工具。当前仓库是以 Androi
 
 - **垂直任务栏支持仍不稳定**：Windows 10 任务栏靠左/靠右（垂直）时，浮岛定位与样式可能不准确。水平任务栏（默认）行为正常。该问题在 v0.3.1 前需优先复验（详见 `docs/testing/v0.3.0-validation.md`）。
 - Win11 浮岛在"开始按钮左对齐 ↔ 居中"切换时，定位可能存在短暂延迟。
+- 应用界面目前仅支持简体中文；英文 README 不代表应用已经提供英文界面。
 
 ## v0.3.0 使用教程
 
@@ -108,7 +113,7 @@ Windows 任务栏 AI API 余额与用量监控工具。当前仓库是以 Androi
 
 - 从 v0.2.1 升级时，旧状态采用 `ThemeMode = System`、经典色板及其四个自定义颜色、空分组、无活动分组，三类通知默认开启；静默启动默认关闭。
 - 旧告警级别按新的 `1.15` 边界重新计算；升级或启动迁移本身不会触发通知，只有后续真实刷新进入状态时才会通知。
-- 可在升级前备份 `%LOCALAPPDATA%\BalanceIsland\state.json`。若需回滚到旧应用版本，先退出应用、保留该备份并还原；旧版本会忽略自己不认识的新字段。完整 Key 仍在 Windows Credential Manager，不在 JSON 中。
+- 可在升级前备份 `%LOCALAPPDATA%\BalanceIsland\state.json`。若需回滚到旧应用版本，先退出应用、保留该备份并还原；旧版本会忽略自己不认识的新字段。手动账户的完整 Key 留在 Windows Credential Manager，环境账户的 Key 留在环境变量中动态读取；两者都不写入 JSON。
 - 如果状态文件无法读取，应用以默认状态安全启动，且不会覆盖原文件，直到后续产生有效保存操作。
 
 ## Windows 手动验收清单
@@ -157,7 +162,8 @@ GitHub Actions 会在 Windows runner 上执行 solution tests、Release build �
 
 ## 数据与安全
 
-- API Key 位于当前 Windows 用户的 Credential Manager，目标名为 `BalanceIsland/<account-id>`。
+- 手动输入的 API Key 位于当前 Windows 用户的 Credential Manager，目标名为 `BalanceIsland/<account-id>`。
+- 环境账户的 Key 保留在 Windows 环境变量中并动态读取，不复制到 Credential Manager 或 JSON。
 - 账户、安全 Key 后缀（短 Key 为空）、余额快照与刷新状态位于
   `%LOCALAPPDATA%\BalanceIsland\state.json`。
 - 日志和错误信息不得输出完整 API Key。
