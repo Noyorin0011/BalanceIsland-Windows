@@ -27,6 +27,8 @@ public sealed record BalanceNotification(
     string AccountNote,
     string MaskedKeySuffix);
 
+public sealed record AppNotification(string Title, string Message);
+
 public static class AccountContextFormatter
 {
     public static string Format(string? accountNote, string? maskedKeySuffix)
@@ -44,6 +46,7 @@ public interface INotificationService : IDisposable
 {
     NotificationChannelStatus ChannelStatus { get; }
     NotificationDeliveryResult Send(BalanceNotification notification);
+    NotificationDeliveryResult Send(AppNotification notification);
     NotificationDeliveryResult SendTest();
 }
 
@@ -60,6 +63,19 @@ public static class ToastPayloadBuilder
                     new XElement("text", "Balance Island"),
                     new XElement("text", $"{KindLabel(notification.Kind)} · {notification.Title}"),
                     new XElement("text", $"{AccountContextFormatter.Format(notification.AccountNote, notification.MaskedKeySuffix)} · {notification.Message}"))));
+        return toast.ToString(SaveOptions.DisableFormatting);
+    }
+
+    public static string Build(AppNotification notification)
+    {
+        ArgumentNullException.ThrowIfNull(notification);
+
+        var toast = new XElement("toast",
+            new XElement("visual",
+                new XElement("binding", new XAttribute("template", "ToastGeneric"),
+                    new XElement("text", "Balance Island"),
+                    new XElement("text", notification.Title),
+                    new XElement("text", notification.Message))));
         return toast.ToString(SaveOptions.DisableFormatting);
     }
 
@@ -92,6 +108,19 @@ public sealed class WindowsNotificationService : INotificationService
     public NotificationDeliveryResult Send(BalanceNotification notification)
     {
         ArgumentNullException.ThrowIfNull(notification);
+        return SendXml(
+            ToastPayloadBuilder.Build(notification, SupportsUrgentNotifications),
+            highPriority: true);
+    }
+
+    public NotificationDeliveryResult Send(AppNotification notification)
+    {
+        ArgumentNullException.ThrowIfNull(notification);
+        return SendXml(ToastPayloadBuilder.Build(notification), highPriority: false);
+    }
+
+    private NotificationDeliveryResult SendXml(string xml, bool highPriority)
+    {
         if (_disposed || !_identity.IsRegistered)
         {
             ChannelStatus = NotificationChannelStatus.Unavailable;
@@ -101,8 +130,9 @@ public sealed class WindowsNotificationService : INotificationService
         try
         {
             var document = new XmlDocument();
-            document.LoadXml(ToastPayloadBuilder.Build(notification, SupportsUrgentNotifications));
-            var toast = new ToastNotification(document) { Priority = ToastNotificationPriority.High };
+            document.LoadXml(xml);
+            var toast = new ToastNotification(document);
+            if (highPriority) toast.Priority = ToastNotificationPriority.High;
             ToastNotificationManager.CreateToastNotifier(DesktopNotificationIdentity.AppUserModelId).Show(toast);
             ChannelStatus = SupportsUrgentNotifications
                 ? NotificationChannelStatus.WindowsImportantNotification

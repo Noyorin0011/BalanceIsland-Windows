@@ -303,6 +303,17 @@ public sealed class BalanceCoordinator : IDisposable
         SaveAndNotify();
     }
 
+    public IReadOnlyList<EnvironmentCredentialCandidate> FindNewEnvironmentCandidates(
+        IEnumerable<EnvironmentCredentialCandidate> candidates)
+    {
+        return EnvironmentImportPlanner.FindNew(
+            candidates,
+            State.Accounts,
+            account => account.CredentialSource == CredentialSource.EnvironmentVariable
+                ? EnvironmentCredentialDiscovery.Read(account.EnvironmentVariableName)
+                : _credentials.Read(account.Id));
+    }
+
     public EnvironmentImportResult ImportEnvironmentAccounts(
         IEnumerable<EnvironmentCredentialCandidate> selectedCandidates)
     {

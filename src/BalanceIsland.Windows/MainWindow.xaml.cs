@@ -16,6 +16,7 @@ public partial class MainWindow : Window
     private readonly bool _isWindows11;
     private bool _updatingIslandMode;
     private bool _loadingControls;
+    private bool _startupEnvironmentPromptHandled;
     private string? _preferredDisplayGroupId;
     private readonly App? _app;
 
@@ -128,8 +129,10 @@ public partial class MainWindow : Window
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
+        if (_startupEnvironmentPromptHandled) return;
+        _startupEnvironmentPromptHandled = true;
         if (_coordinator.State.EnvironmentAutoImportEnabled)
-            Dispatcher.BeginInvoke(OpenEnvironmentImportDialog);
+            Dispatcher.BeginInvoke(() => OpenEnvironmentImportDialog(onlyNew: true));
     }
 
     private async void AddAccount_Click(object sender, RoutedEventArgs e)
@@ -609,7 +612,8 @@ public partial class MainWindow : Window
             : "已停用启动扫描提示；已添加的环境账户仍保留。";
     }
 
-    private void ScanEnvironment_Click(object sender, RoutedEventArgs e) => OpenEnvironmentImportDialog();
+    private void ScanEnvironment_Click(object sender, RoutedEventArgs e) =>
+        OpenEnvironmentImportDialog(onlyNew: false);
 
     private void NotificationSettings_Changed(object sender, RoutedEventArgs e)
     {
@@ -660,9 +664,16 @@ public partial class MainWindow : Window
         };
     }
 
-    private void OpenEnvironmentImportDialog()
+    private void OpenEnvironmentImportDialog(bool onlyNew)
     {
-        var candidates = EnvironmentCredentialDiscovery.Scan();
+        IReadOnlyList<EnvironmentCredentialCandidate> candidates =
+            EnvironmentCredentialDiscovery.Scan();
+        if (onlyNew)
+        {
+            candidates = _coordinator.FindNewEnvironmentCandidates(candidates);
+            if (candidates.Count == 0) return;
+        }
+
         var dialog = new EnvironmentImportWindow(candidates, _coordinator.State.Accounts) { Owner = this };
         (System.Windows.Application.Current as App)?.TrackWindow(dialog);
         if (dialog.ShowDialog() != true) return;

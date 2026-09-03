@@ -56,6 +56,7 @@ public partial class App : System.Windows.Application
         };
 
         CreateTrayIcon();
+        NotifyNewEnvironmentCandidatesIfSilent(startSilent);
         _islandHealthTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
         _islandHealthTimer.Tick += (_, _) => EnsureIslandHealthy();
         _islandHealthTimer.Start();
@@ -88,6 +89,26 @@ public partial class App : System.Windows.Application
             ContextMenuStrip = menu
         };
         _trayIcon.DoubleClick += (_, _) => ShowMainWindow();
+    }
+
+    private void NotifyNewEnvironmentCandidatesIfSilent(bool startSilent)
+    {
+        if (!startSilent ||
+            _coordinator is null ||
+            !_coordinator.State.EnvironmentAutoImportEnabled) return;
+
+        var candidates = _coordinator.FindNewEnvironmentCandidates(
+            EnvironmentCredentialDiscovery.Scan());
+        if (EnvironmentPromptPolicy.ForStartup(startSilent, candidates.Count) !=
+            EnvironmentPromptAction.Notify) return;
+
+        var message = $"发现 {candidates.Count} 个尚未导入的环境凭据。打开 Balance Island 进行确认。";
+        var result = _notificationService?.Send(new AppNotification(
+            "发现新的环境 API",
+            message)) ?? NotificationDeliveryResult.Failed;
+        UpdateNotificationStatus(result);
+        if (result == NotificationDeliveryResult.Failed)
+            ShowTrayBalloon("发现新的环境 API", message);
     }
 
     public NotificationDeliveryResult SendTestNotification()
